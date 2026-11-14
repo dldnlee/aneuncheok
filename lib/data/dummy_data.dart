@@ -86,6 +86,37 @@ final List<KnowledgeItem> knowledgeItems = [
     content: '대부분의 수도꼭지는 왼쪽이 온수, 오른쪽이 냉수입니다. 이는 국제 표준으로, 오른손잡이가 냉수를 쉽게 틀 수 있도록 설계된 것입니다.',
   ),
 
+  const KnowledgeItem(
+    id: 'd8',
+    categoryId: 'daily',
+    title: '재활용품은 헹궈서',
+    content: '음식물이 묻은 용기는 재활용이 되지 않고 일반쓰레기가 됩니다. 내용물을 비우고 물로 헹군 뒤, 라벨 등 다른 재질은 떼어서 배출하세요.',
+  ),
+  const KnowledgeItem(
+    id: 'd9',
+    categoryId: 'daily',
+    title: '119, 112, 120',
+    content: '화재·구급은 119, 범죄 신고는 112입니다. 120은 지자체의 민원·생활 불편 상담 번호(서울은 다산콜센터)로, 긴급 상황에는 쓰지 않습니다.',
+  ),
+  const KnowledgeItem(
+    id: 'd10',
+    categoryId: 'daily',
+    title: '멀티탭 문어발',
+    content: '멀티탭에는 정격 용량(보통 15~16A, 약 3,300~3,500W)이 있습니다. 전기히터, 전기밥솥 같은 고출력 제품을 한 곳에 여러 개 꽂으면 과열되어 화재가 날 수 있습니다.',
+  ),
+  const KnowledgeItem(
+    id: 'd11',
+    categoryId: 'daily',
+    title: '침구 세탁 주기',
+    content: '이불과 베개 커버는 1~2주에 한 번 세탁하는 것이 좋습니다. 땀과 각질이 쌓이면 집먼지진드기가 번식하기 쉽습니다.',
+  ),
+  const KnowledgeItem(
+    id: 'd12',
+    categoryId: 'daily',
+    title: '냉장고는 70%만',
+    content: '냉장실은 70% 정도만 채워야 냉기가 잘 순환합니다. 반대로 냉동실은 가득 채워야 서로 냉기를 유지해 효율이 좋습니다.',
+  ),
+
   // 건강 (Health)
   const KnowledgeItem(
     id: 'he1',
@@ -122,6 +153,37 @@ final List<KnowledgeItem> knowledgeItems = [
     categoryId: 'health',
     title: '약 먹을 때 자몽 주의',
     content: '자몽(자몽 주스 포함)은 많은 약물의 대사를 방해합니다. 혈압약, 콜레스테롤약 등과 함께 먹으면 약 효과가 과도하게 강해질 수 있으니 주의하세요.',
+  ),
+
+  const KnowledgeItem(
+    id: 'he7',
+    categoryId: 'health',
+    title: '칫솔 교체 주기',
+    content: '칫솔은 약 3개월마다 바꾸는 것이 좋습니다. 칫솔모가 벌어지면 세정력이 떨어지므로 그 전에 교체하세요.',
+  ),
+  const KnowledgeItem(
+    id: 'he8',
+    categoryId: 'health',
+    title: '만 보를 꼭 걸어야 할까',
+    content: '하루 만 보가 꼭 필요한 것은 아닙니다. 연구에 따르면 하루 7,000~8,000보만 걸어도 건강에 큰 도움이 됩니다.',
+  ),
+  const KnowledgeItem(
+    id: 'he9',
+    categoryId: 'health',
+    title: '실내에서도 자외선',
+    content: '자외선 A(UVA)는 유리창을 통과해 피부 노화를 일으킵니다. 창가에 오래 있거나 차를 오래 탄다면 실내에서도 자외선 차단제가 도움이 됩니다.',
+  ),
+  const KnowledgeItem(
+    id: 'he10',
+    categoryId: 'health',
+    title: '20-20-20 눈 휴식법',
+    content: '화면을 20분 본 뒤에는 20피트(약 6m) 떨어진 곳을 20초 동안 바라보세요. 눈의 피로와 건조함을 줄이는 간단한 방법입니다.',
+  ),
+  const KnowledgeItem(
+    id: 'he11',
+    categoryId: 'health',
+    title: '해열제 복용 간격',
+    content: '아세트아미노펜(타이레놀)은 보통 4~6시간 이상 간격을 두고 먹어야 합니다. 하루 최대 용량을 넘기면 간 손상 위험이 있으니 설명서를 꼭 확인하세요.',
   ),
 
   // 음식 (Food)
@@ -162,6 +224,37 @@ final List<KnowledgeItem> knowledgeItems = [
     content: '실온 해동은 세균 번식 위험이 있습니다. 냉장실에서 천천히 해동하거나, 밀봉 후 찬물에 담그는 것이 안전합니다. 전자레인지 해동 후에는 바로 조리하세요.',
   ),
 
+  const KnowledgeItem(
+    id: 'f7',
+    categoryId: 'food',
+    title: '싹 난 감자',
+    content: '감자의 싹과 초록빛 껍질에는 솔라닌이라는 독소가 있어 복통과 구토를 일으킬 수 있습니다. 싹이 많이 났거나 초록색이 넓다면 버리는 것이 안전합니다.',
+  ),
+  const KnowledgeItem(
+    id: 'f8',
+    categoryId: 'food',
+    title: '남은 밥 보관법',
+    content: '밥을 실온에 오래 두면 바실러스 세레우스균이 번식해 식중독을 일으킬 수 있습니다. 남은 밥은 식혀서 바로 소분해 냉동 보관하세요.',
+  ),
+  const KnowledgeItem(
+    id: 'f9',
+    categoryId: 'food',
+    title: '토마토는 익혀서',
+    content: '토마토의 라이코펜은 열을 가하고 기름과 함께 먹을 때 몸에 더 잘 흡수됩니다. 생으로 먹는 것보다 올리브유에 볶아 먹는 것이 유리합니다.',
+  ),
+  const KnowledgeItem(
+    id: 'f10',
+    categoryId: 'food',
+    title: '달걀 보관 방향',
+    content: '달걀은 둥근 쪽(공기주머니)이 위로 가게 두면 신선도가 더 오래 유지됩니다. 껍질을 씻지 말고 냉장 보관하세요.',
+  ),
+  const KnowledgeItem(
+    id: 'f11',
+    categoryId: 'food',
+    title: '세균이 번식하는 온도',
+    content: '음식은 5~60℃ 사이에서 세균이 빠르게 번식합니다. 조리한 음식은 2시간 이내에 냉장하고, 다시 먹을 때는 속까지 충분히 데우세요.',
+  ),
+
   // 돈 (Money)
   const KnowledgeItem(
     id: 'm1',
@@ -194,6 +287,37 @@ final List<KnowledgeItem> knowledgeItems = [
     content: '직장인이 가입하는 4대 보험은 국민연금, 건강보험, 고용보험, 산재보험입니다. 급여에서 자동으로 공제되며, 회사와 근로자가 나누어 부담합니다.',
   ),
 
+  const KnowledgeItem(
+    id: 'm6',
+    categoryId: 'money',
+    title: '체크카드 vs 신용카드',
+    content: '신용카드는 먼저 쓰고 나중에 갚는 후불 결제이고, 체크카드는 계좌 잔액에서 바로 빠져나갑니다. 연말정산 소득공제율은 신용카드 15%, 체크카드 30%입니다.',
+  ),
+  const KnowledgeItem(
+    id: 'm7',
+    categoryId: 'money',
+    title: '인플레이션',
+    content: '인플레이션은 물가가 계속 오르는 현상입니다. 같은 돈으로 살 수 있는 물건이 줄어들기 때문에, 예금 금리가 물가상승률보다 낮으면 실질 가치는 줄어듭니다.',
+  ),
+  const KnowledgeItem(
+    id: 'm8',
+    categoryId: 'money',
+    title: 'ETF란?',
+    content: 'ETF(상장지수펀드)는 주가지수 등을 따라가도록 만든 펀드를 주식처럼 사고팔 수 있게 한 상품입니다. 한 번에 여러 종목에 분산 투자하는 효과가 있습니다.',
+  ),
+  const KnowledgeItem(
+    id: 'm9',
+    categoryId: 'money',
+    title: '리볼빙의 함정',
+    content: '리볼빙은 카드 결제 금액의 일부만 내고 나머지를 다음 달로 넘기는 서비스입니다. 연 15~20% 안팎의 높은 수수료가 붙어 빚이 빠르게 불어날 수 있습니다.',
+  ),
+  const KnowledgeItem(
+    id: 'm10',
+    categoryId: 'money',
+    title: '전입신고와 확정일자',
+    content: '전세나 월세로 이사하면 전입신고를 하고 확정일자를 받아두세요. 전입신고는 대항력을, 확정일자는 보증금을 우선 돌려받을 권리(우선변제권)를 갖게 해줍니다.',
+  ),
+
   // 안전 (Safety)
   const KnowledgeItem(
     id: 'sa1',
@@ -224,6 +348,37 @@ final List<KnowledgeItem> knowledgeItems = [
     categoryId: 'safety',
     title: '화상 응급처치',
     content: '화상을 입으면 즉시 흐르는 찬물로 10~20분간 식혀주세요. 얼음을 직접 대거나, 된장·치약·알로에를 바르면 오히려 감염 위험이 높아집니다.',
+  ),
+
+  const KnowledgeItem(
+    id: 'sa6',
+    categoryId: 'safety',
+    title: '하임리히법',
+    content: '음식물이 목에 걸려 말을 못 하면 119에 신고하고 하임리히법을 하세요. 뒤에서 허리를 감싸 안고 주먹을 명치 아래에 대고 위로 힘껏 밀어 올립니다. 영아와 임산부는 방법이 다릅니다.',
+  ),
+  const KnowledgeItem(
+    id: 'sa7',
+    categoryId: 'safety',
+    title: '화재 시 대피 요령',
+    content: '화재가 나면 젖은 수건으로 코와 입을 막고 낮은 자세로 대피하세요. 연기는 위로 모입니다. 엘리베이터는 타지 말고 계단을 이용하세요.',
+  ),
+  const KnowledgeItem(
+    id: 'sa8',
+    categoryId: 'safety',
+    title: '가스 냄새가 날 때',
+    content: '가스 냄새가 나면 먼저 밸브를 잠그고 창문을 열어 환기하세요. 전등이나 환풍기 스위치를 켜면 불꽃이 튈 수 있으니 만지지 말고, 밖으로 나가 신고하세요.',
+  ),
+  const KnowledgeItem(
+    id: 'sa9',
+    categoryId: 'safety',
+    title: '전동킥보드 헬멧',
+    content: '전동킥보드 같은 개인형 이동장치는 헬멧 착용이 의무이며, 어기면 범칙금 2만 원이 부과됩니다. 운전면허도 필요하고 인도 주행은 금지입니다.',
+  ),
+  const KnowledgeItem(
+    id: 'sa10',
+    categoryId: 'safety',
+    title: '보이스피싱 대처',
+    content: '수사기관이나 금융기관은 전화로 돈을 보내라거나 앱을 설치하라고 하지 않습니다. 의심되면 바로 끊고 112 또는 금융감독원(1332)에 확인하세요.',
   ),
 
   // 인체 (Body)
@@ -262,6 +417,36 @@ final List<KnowledgeItem> knowledgeItems = [
     categoryId: 'body',
     title: '눈 깜빡임',
     content: '사람은 1분에 평균 15~20번 눈을 깜빡입니다. 하루에 약 2만 번이며, 컴퓨터나 스마트폰을 볼 때는 깜빡임 횟수가 절반으로 줄어 눈이 건조해집니다.',
+  ),
+  const KnowledgeItem(
+    id: 'b7',
+    categoryId: 'body',
+    title: '몸의 60%는 물',
+    content: '성인 몸무게의 약 60%는 물입니다. 신생아는 이보다 높고, 나이가 들수록 수분 비율이 줄어듭니다.',
+  ),
+  const KnowledgeItem(
+    id: 'b8',
+    categoryId: 'body',
+    title: '쉬지 않는 심장',
+    content: '성인의 심장은 안정 시 1분에 60~100번 뜁니다. 하루에 약 10만 번 뛰면서 온몸으로 피를 보냅니다.',
+  ),
+  const KnowledgeItem(
+    id: 'b9',
+    categoryId: 'body',
+    title: '가장 큰 장기, 피부',
+    content: '피부는 몸에서 가장 큰 장기로, 성인 기준 면적이 약 1.5~2㎡입니다. 겉의 표피는 약 4주마다 새것으로 바뀝니다.',
+  ),
+  const KnowledgeItem(
+    id: 'b10',
+    categoryId: 'body',
+    title: '뇌는 10%만 쓴다?',
+    content: '사람이 뇌의 10%만 쓴다는 말은 사실이 아닙니다. 뇌는 하루 종일 대부분의 영역이 활동하며, 몸무게의 2%지만 에너지는 약 20%를 씁니다.',
+  ),
+  const KnowledgeItem(
+    id: 'b11',
+    categoryId: 'body',
+    title: '딸꾹질의 정체',
+    content: '딸꾹질은 가로막(횡격막)이 갑자기 수축하고 성대 사이가 닫히면서 나는 소리입니다. 대부분 몇 분 안에 멈추지만, 48시간 넘게 이어지면 병원에 가세요.',
   ),
 ];
 
