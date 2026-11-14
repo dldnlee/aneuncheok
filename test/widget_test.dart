@@ -3,34 +3,56 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:aneuncheok/data/dummy_data.dart';
+import 'package:aneuncheok/main.dart';
 import 'package:aneuncheok/state/progress_store.dart';
 
-import 'test_helpers.dart';
+const _newToMe = '🤯 몰랐어요!';
+const _alreadyKnew = '😎 알고 있었어요';
+
+/// Phone-sized surface (so the lazy category grid is fully built) with
+/// "reduce motion" on, so looping animations do not stop pumpAndSettle.
+Future<ProgressStore> pumpApp(
+  WidgetTester tester, {
+  ProgressStore? store,
+  Size size = const Size(400, 1400),
+}) async {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+
+  final s = store ?? ProgressStore(clock: () => DateTime(2026, 1, 1, 9));
+  await tester.pumpWidget(MyApp(store: s));
+  return s;
+}
+
+Future<void> openFirstCategory(WidgetTester tester) async {
+  await tester.tap(find.text(categories.first.name));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   group('home', () {
-    testWidgets('shows brand, shuffle button, tabs and every category', (
+    testWidgets('shows brand, shuffle button and every category', (
       tester,
     ) async {
       await pumpApp(tester);
 
       expect(find.text('아는척'), findsOneWidget);
       expect(find.text('랜덤 상식'), findsOneWidget);
-      for (final label in ['홈', '랭킹', '나']) {
-        expect(find.text(label), findsOneWidget);
-      }
       for (final category in categories) {
         expect(find.text(category.name), findsOneWidget);
       }
     });
 
-    testWidgets('shows level, XP, daily goal and per-category progress', (
+    testWidgets('shows level, daily goal and per-category progress', (
       tester,
     ) async {
       await pumpApp(tester);
 
       expect(find.text('Lv.1  ${levels.first.name}'), findsOneWidget);
-      expect(find.text('다음 레벨까지 ${levels[1].minXp} XP'), findsOneWidget);
       expect(find.text('🎯 오늘의 목표'), findsOneWidget);
       final first = getItemsByCategory(categories.first.id).length;
       expect(find.text('0 / $first 알았어요'), findsOneWidget);
@@ -39,11 +61,11 @@ void main() {
     testWidgets('shows the goal as reached once five cards were seen', (
       tester,
     ) async {
-      final progress = ProgressStore(clock: () => testNow);
+      final store = ProgressStore(clock: () => DateTime(2026, 1, 1));
       for (var i = 0; i < ProgressStore.dailyGoal; i++) {
-        progress.recordView('seen-$i');
+        store.recordView('seen-$i');
       }
-      await pumpApp(tester, progress: progress);
+      await pumpApp(tester, store: store);
 
       expect(find.text('🎉 목표 달성!'), findsOneWidget);
       expect(find.text('5/5'), findsOneWidget);
@@ -65,20 +87,6 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('아직 저장한 상식이 없어요'), findsOneWidget);
-    });
-
-    testWidgets('rank teaser shows my place among friends and opens ranking', (
-      tester,
-    ) async {
-      await pumpApp(tester);
-
-      // A brand-new player is behind all four default friends.
-      expect(find.text('친구 중 5위'), findsOneWidget);
-
-      await tester.tap(find.text('친구 중 5위'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('랭킹 🏆'), findsOneWidget);
     });
   });
 
@@ -116,10 +124,9 @@ void main() {
       tester,
     ) async {
       final items = getItemsByCategory(categories.first.id);
-      final progress = ProgressStore(clock: () => testNow);
-      progress.complete(items.first.id, newToMe: true);
-      progress.drainNewBadges();
-      await pumpApp(tester, progress: progress);
+      final store = ProgressStore(clock: () => DateTime(2026, 1, 1));
+      store.complete(items.first.id, newToMe: true);
+      await pumpApp(tester, store: store);
 
       await openFirstCategory(tester);
 
@@ -128,36 +135,31 @@ void main() {
     });
 
     testWidgets('viewing the first card starts the streak', (tester) async {
-      final app = await pumpApp(tester);
-      expect(app.progress.currentStreak, 0);
+      final store = await pumpApp(tester);
+      expect(store.currentStreak, 0);
 
       await openFirstCategory(tester);
 
-      expect(app.progress.currentStreak, 1);
+      expect(store.currentStreak, 1);
       expect(find.text('🔥 1일 연속! 멋져요'), findsOneWidget);
     });
 
-    testWidgets('fifth card of the day shows the goal toast and its badge', (
-      tester,
-    ) async {
-      final progress = ProgressStore(clock: () => testNow);
+    testWidgets('fifth card of the day shows the goal toast', (tester) async {
+      final store = ProgressStore(clock: () => DateTime(2026, 1, 1));
       for (var i = 0; i < ProgressStore.dailyGoal - 1; i++) {
-        progress.recordView('seen-$i');
+        store.recordView('seen-$i');
       }
-      await pumpApp(tester, progress: progress);
+      await pumpApp(tester, store: store);
 
       await openFirstCategory(tester);
 
-      expect(
-        find.text('🎯 오늘 목표 달성! +${XpRewards.dailyGoal} XP'),
-        findsOneWidget,
-      );
-      expect(progress.goalReached, isTrue);
-      expect(find.text('NEW BADGE!'), findsOneWidget);
-      expect(find.text('목표 달성'), findsOneWidget);
+      expect(find.text('🎯 오늘 목표 달성! 대단해요'), findsOneWidget);
+      expect(store.goalReached, isTrue);
     });
 
-    testWidgets('every card and pop-up fits on a small phone', (tester) async {
+    testWidgets('every card fits on a small phone without overflow', (
+      tester,
+    ) async {
       await pumpApp(tester, size: const Size(320, 568));
       await tester.tap(find.text('랜덤 상식'));
       await tester.pumpAndSettle();
@@ -192,95 +194,55 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('랜덤 상식'), findsOneWidget);
     });
-
-    testWidgets('finish screen shows the XP earned and level progress', (
-      tester,
-    ) async {
-      await pumpApp(tester);
-      await openFirstCategory(tester);
-      await tester.tap(find.text(newToMeLabel));
-      await tester.pumpAndSettle();
-      await dismissDialogs(tester);
-
-      final total = getItemsByCategory(categories.first.id).length;
-      tester
-          .widget<PageView>(find.byType(PageView))
-          .controller!
-          .jumpToPage(total);
-      await tester.pumpAndSettle();
-
-      expect(find.text('⭐ 이번에 +${XpRewards.newToMe} XP 얻었어요!'), findsOneWidget);
-      expect(find.text('🌱 Lv.1  ${levels.first.name}'), findsOneWidget);
-    });
   });
 
   group('interactions', () {
-    testWidgets('"몰랐어요" records the reaction, XP and a first badge', (
-      tester,
-    ) async {
-      final app = await pumpApp(tester);
+    testWidgets('"몰랐어요" records the reaction', (tester) async {
+      final store = await pumpApp(tester);
       final first = getItemsByCategory(categories.first.id).first;
       await openFirstCategory(tester);
 
-      await tester.tap(find.text(newToMeLabel));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      expect(find.text('+${XpRewards.newToMe} XP  새로 알았다! 🌟'), findsOneWidget);
-
+      await tester.tap(find.text(_newToMe));
       await tester.pumpAndSettle();
-      expect(app.progress.reactionFor(first.id), isTrue);
-      expect(app.progress.completedCount, 1);
-      expect(app.progress.xp, XpRewards.newToMe);
-      expect(find.text('NEW BADGE!'), findsOneWidget);
-      expect(find.text('첫걸음'), findsOneWidget);
+
+      expect(store.reactionFor(first.id), isTrue);
+      expect(store.completedCount, 1);
       expect(find.text('위로 스와이프해서 다음 상식'), findsOneWidget);
-    });
-
-    testWidgets('"알고 있었어요" is worth less XP', (tester) async {
-      final app = await pumpApp(tester);
-      await openFirstCategory(tester);
-
-      await tester.tap(find.text(alreadyKnewLabel));
-      await tester.pumpAndSettle();
-
-      expect(app.progress.xp, XpRewards.alreadyKnew);
     });
 
     testWidgets('can change a reaction without double counting', (
       tester,
     ) async {
-      final app = await pumpApp(tester);
+      final store = await pumpApp(tester);
       final first = getItemsByCategory(categories.first.id).first;
       await openFirstCategory(tester);
 
-      await tester.tap(find.text(newToMeLabel));
+      await tester.tap(find.text(_newToMe));
       await tester.pumpAndSettle();
-      await dismissDialogs(tester);
-      await tester.tap(find.text(alreadyKnewLabel));
+      await tester.tap(find.text(_alreadyKnew));
       await tester.pumpAndSettle();
 
-      expect(app.progress.reactionFor(first.id), isFalse);
-      expect(app.progress.completedCount, 1);
-      expect(app.progress.xp, XpRewards.newToMe);
+      expect(store.reactionFor(first.id), isFalse);
+      expect(store.completedCount, 1);
     });
 
     testWidgets('save button toggles saved state', (tester) async {
-      final app = await pumpApp(tester);
+      final store = await pumpApp(tester);
       final first = getItemsByCategory(categories.first.id).first;
       await openFirstCategory(tester);
 
       await tester.tap(find.text('저장'));
       await tester.pumpAndSettle();
-      expect(app.progress.isSaved(first.id), isTrue);
+      expect(store.isSaved(first.id), isTrue);
       expect(find.text('저장됨'), findsOneWidget);
 
       await tester.tap(find.text('저장됨'));
       await tester.pumpAndSettle();
-      expect(app.progress.isSaved(first.id), isFalse);
+      expect(store.isSaved(first.id), isFalse);
     });
 
     testWidgets('double tapping the card saves it', (tester) async {
-      final app = await pumpApp(tester);
+      final store = await pumpApp(tester);
       final first = getItemsByCategory(categories.first.id).first;
       await openFirstCategory(tester);
 
@@ -290,13 +252,13 @@ void main() {
       await tester.tapAt(spot);
       await tester.pumpAndSettle();
 
-      expect(app.progress.isSaved(first.id), isTrue);
+      expect(store.isSaved(first.id), isTrue);
     });
 
     testWidgets('saved cards open from the home chip', (tester) async {
-      final app = await pumpApp(tester);
+      final store = await pumpApp(tester);
       final first = getItemsByCategory(categories.first.id).first;
-      app.progress.save(first.id);
+      store.save(first.id);
       await tester.pump();
 
       await tester.tap(find.text('❤️'));
@@ -307,9 +269,7 @@ void main() {
       expect(find.text('1 / 1'), findsOneWidget);
     });
 
-    testWidgets('copy button copies the card and counts as a share', (
-      tester,
-    ) async {
+    testWidgets('copy button puts the card on the clipboard', (tester) async {
       String? copied;
       tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
         SystemChannels.platform,
@@ -326,7 +286,7 @@ void main() {
           null,
         ),
       );
-      final app = await pumpApp(tester);
+      await pumpApp(tester);
       final first = getItemsByCategory(categories.first.id).first;
       await openFirstCategory(tester);
 
@@ -335,22 +295,20 @@ void main() {
 
       expect(copied, contains(first.title));
       expect(find.textContaining('복사했어요'), findsOneWidget);
-      expect(app.progress.shares, 1);
     });
 
     testWidgets('reaching a new level shows the level-up dialog', (
       tester,
     ) async {
-      final progress = ProgressStore(clock: () => testNow);
-      final reactions = levels[1].minXp ~/ XpRewards.newToMe;
-      for (var i = 0; i < reactions - 1; i++) {
-        progress.complete('earlier-$i', newToMe: true);
+      final store = ProgressStore(clock: () => DateTime(2026, 1, 1));
+      final threshold = levels[1].minCompleted;
+      for (var i = 0; i < threshold - 1; i++) {
+        store.complete('earlier-$i', newToMe: true);
       }
-      progress.drainNewBadges();
-      await pumpApp(tester, progress: progress);
+      await pumpApp(tester, store: store);
       await openFirstCategory(tester);
 
-      await tester.tap(find.text(newToMeLabel));
+      await tester.tap(find.text(_newToMe));
       await tester.pumpAndSettle();
 
       expect(find.text('LEVEL UP!'), findsOneWidget);
@@ -359,38 +317,6 @@ void main() {
       await tester.tap(find.text('계속하기'));
       await tester.pumpAndSettle();
       expect(find.text('LEVEL UP!'), findsNothing);
-    });
-
-    testWidgets('finishing a category cheers and awards its badge', (
-      tester,
-    ) async {
-      final category = categories.first;
-      final ids = getItemsByCategory(category.id).map((i) => i.id).toList();
-      final progress = ProgressStore(clock: () => testNow);
-      for (final id in ids.take(ids.length - 1)) {
-        progress.complete(id, newToMe: true);
-      }
-      progress.drainNewBadges();
-      await pumpApp(tester, progress: progress);
-      await openFirstCategory(tester);
-
-      await tester.tap(find.text(newToMeLabel));
-      await tester.pump(const Duration(milliseconds: 100));
-
-      expect(
-        find.text('🏆 ${category.name} 정복! +${XpRewards.categoryMastery} XP'),
-        findsOneWidget,
-      );
-
-      await tester.pumpAndSettle();
-      // The level-up dialog comes first, then the badge.
-      expect(find.text('LEVEL UP!'), findsOneWidget);
-      await tester.tap(find.text('계속하기'));
-      await tester.pumpAndSettle();
-      expect(find.text('NEW BADGE!'), findsOneWidget);
-      expect(find.text('${category.name} 박사'), findsOneWidget);
-      await dismissDialogs(tester);
-      expect(progress.hasBadge('master_${category.id}'), isTrue);
     });
   });
 }
