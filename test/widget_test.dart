@@ -52,9 +52,18 @@ void main() {
 
     testWidgets('lays out on a small phone without overflow', (tester) async {
       await pumpApp(tester, size: const Size(320, 568));
+      expect(tester.takeException(), isNull);
+      expect(find.text('아는척'), findsOneWidget);
 
+      // The home screen scrolls; lay out everything below the fold too.
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('랜덤 상식'), findsOneWidget);
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -3000));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('tapping saved with nothing saved explains how to save', (
@@ -97,8 +106,7 @@ void main() {
     testWidgets('shuffle opens a feed with every item', (tester) async {
       await pumpApp(tester);
 
-      await tester.tap(find.text('랜덤 상식'));
-      await tester.pumpAndSettle();
+      await openShuffle(tester);
 
       expect(find.text('1 / ${knowledgeItems.length}'), findsOneWidget);
     });
@@ -160,8 +168,7 @@ void main() {
 
     testWidgets('every card and pop-up fits on a small phone', (tester) async {
       await pumpApp(tester, size: const Size(320, 568));
-      await tester.tap(find.text('랜덤 상식'));
-      await tester.pumpAndSettle();
+      await openShuffle(tester);
 
       final controller = tester
           .widget<PageView>(find.byType(PageView))
@@ -178,8 +185,7 @@ void main() {
     ) async {
       const screen = Size(320, 568);
       await pumpApp(tester, size: screen);
-      await tester.tap(find.text('랜덤 상식'));
-      await tester.pumpAndSettle();
+      await openShuffle(tester);
 
       final controller = tester
           .widget<PageView>(find.byType(PageView))

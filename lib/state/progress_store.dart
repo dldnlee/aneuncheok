@@ -54,6 +54,26 @@ class XpRewards {
   /// Bonus for remembering a card at the last step, when it "graduates".
   static const graduated = 25;
 
+  /// Quiz: XP for a correct answer, plus [quizComboBonus] for every correct
+  /// answer in a row beyond the first (at most [quizComboCap] steps).
+  static const quizCorrect = 5;
+  static const quizComboBonus = 1;
+  static const quizComboCap = 4;
+
+  /// Bonus for a flawless round.
+  static const quizPerfect = 20;
+
+  /// The most XP the quiz can pay out per day, so a replayable quiz cannot be
+  /// ground endlessly for levels or the weekly ranking. One flawless round
+  /// earns exactly this much.
+  static const quizDailyCap = 100;
+
+  /// XP for a correct answer at the given run of [combo] correct answers
+  /// (counting this one).
+  static int quizAnswerXp(int combo) =>
+      quizCorrect +
+      quizComboBonus * math.min(math.max(combo - 1, 0), quizComboCap);
+
   /// Bonus for the first activity of a day, growing with the streak up to
   /// 7 days. A 1-day streak earns nothing.
   static int streakBonus(int streak) =>
@@ -186,6 +206,15 @@ class ProgressStore extends ChangeNotifier {
   final Set<String> _graduated = {};
   int _reviews = 0;
 
+  // Quiz
+  int _quizRounds = 0;
+  int _quizCorrect = 0;
+  int _perfectRounds = 0;
+  int _bestQuiz = 0;
+  int _bestQuizCombo = 0;
+  String? _quizDay;
+  int _quizXpToday = 0;
+
   /// badge id -> day key it was unlocked.
   final Map<String, String> _badgeUnlocked = {};
   final List<AppBadge> _pendingBadges = [];
@@ -253,6 +282,22 @@ class ProgressStore extends ChangeNotifier {
   int get graduatedCount => _graduated.length;
 
   bool isGraduated(String id) => _graduated.contains(id);
+
+  // Quiz
+
+  int get quizRounds => _quizRounds;
+  int get quizCorrect => _quizCorrect;
+  int get perfectRounds => _perfectRounds;
+
+  /// Most correct answers in a single round.
+  int get bestQuizScore => _bestQuiz;
+  int get bestQuizCombo => _bestQuizCombo;
+
+  /// Quiz XP still available today. Playing is never blocked; answers just
+  /// stop paying out once this reaches 0.
+  int get quizXpLeftToday => _quizDay == _today
+      ? math.max(0, XpRewards.quizDailyCap - _quizXpToday)
+      : XpRewards.quizDailyCap;
 
   /// Ids due for review, longest overdue first, at most [limit].
   List<String> dueIds({int limit = ReviewSchedule.sessionLimit}) {
@@ -339,6 +384,9 @@ class ProgressStore extends ChangeNotifier {
       totalItems: _totalItems,
       reviews: _reviews,
       graduated: _graduated.length,
+      quizRounds: _quizRounds,
+      quizCorrect: _quizCorrect,
+      perfectRounds: _perfectRounds,
     );
   }
 
@@ -482,6 +530,67 @@ class ProgressStore extends ChangeNotifier {
     );
   }
 
+  /// Records one quiz answer. [combo] is the current run of correct answers
+  /// including this one. A wrong answer puts the card into the review queue
+  /// (or back into it, if it had already graduated).
+  ActivityResult quizAnswer(String id, {required bool correct, int combo = 1}) {
+    final before = level;
+    var xp = 0;
+
+    final streakUp = _touch();
+    if (streakUp) xp += XpRewards.streakBonus(_streak);
+
+    if (correct) {
+      _quizCorrect++;
+      _bestQuizCombo = math.max(_bestQuizCombo, combo);
+      xp += _takeQuizQuota(XpRewards.quizAnswerXp(combo));
+    } else {
+      _enqueueForReview(id);
+    }
+
+    if (xp > 0) _gain(xp);
+    _evaluateBadges();
+    _persist();
+    notifyListeners();
+
+    return ActivityResult(
+      xpGained: xp,
+      leveledUpTo: _levelUpFrom(before),
+      streakIncreased: streakUp,
+    );
+  }
+
+  /// Call once when a quiz round ends. [correct] is the number of right
+  /// answers; a [perfect] round (every question right) earns a bonus.
+  ActivityResult quizRoundFinished({
+    required int correct,
+    bool perfect = false,
+  }) {
+    final before = level;
+    var xp = 0;
+
+    final streakUp = _touch();
+    if (streakUp) xp += XpRewards.streakBonus(_streak);
+
+    _quizRounds++;
+    _bestQuiz = math.max(_bestQuiz, correct);
+    if (perfect) {
+      _perfectRounds++;
+      xp += _takeQuizQuota(XpRewards.quizPerfect);
+    }
+
+    if (xp > 0) _gain(xp);
+    _evaluateBadges();
+    _persist();
+    notifyListeners();
+
+    return ActivityResult(
+      xpGained: xp,
+      leveledUpTo: _levelUpFrom(before),
+      streakIncreased: streakUp,
+    );
+  }
+
   /// Returns true when the card is saved after the call.
   bool toggleSaved(String id) {
     final nowSaved = _saved.add(id);
@@ -509,6 +618,32 @@ class ProgressStore extends ChangeNotifier {
   }
 
   // ---- internals ------------------------------------------------------
+
+  /// Takes up to [amount] XP from today's quiz allowance and returns how much
+  /// was actually granted.
+  int _takeQuizQuota(int amount) {
+    final today = _today;
+    if (_quizDay != today) {
+      _quizDay = today;
+      _quizXpToday = 0;
+    }
+    final allowed = math.min(amount, XpRewards.quizDailyCap - _quizXpToday);
+    _quizXpToday += allowed;
+    return allowed;
+  }
+
+  /// A card the player got wrong should come back soon. One that had already
+  /// graduated starts the ladder again; one already queued keeps its step.
+  void _enqueueForReview(String id) {
+    if (_graduated.remove(id)) {
+      _review[id] = _ReviewState(0, _dayAfter(ReviewSchedule.intervals[0]));
+      return;
+    }
+    _review.putIfAbsent(
+      id,
+      () => _ReviewState(0, _dayAfter(ReviewSchedule.intervals[0])),
+    );
+  }
 
   String get _today => _dayKey(_clock());
 
@@ -622,6 +757,13 @@ class ProgressStore extends ChangeNotifier {
         },
         'graduated': _graduated.toList(),
         'reviews': _reviews,
+        'quizRounds': _quizRounds,
+        'quizCorrect': _quizCorrect,
+        'perfectRounds': _perfectRounds,
+        'bestQuiz': _bestQuiz,
+        'bestQuizCombo': _bestQuizCombo,
+        'quizDay': _quizDay,
+        'quizXpToday': _quizXpToday,
       }),
     );
   }
@@ -671,6 +813,13 @@ class ProgressStore extends ChangeNotifier {
       });
       _graduated.addAll((data['graduated'] as List? ?? []).cast<String>());
       _reviews = data['reviews'] as int? ?? 0;
+      _quizRounds = data['quizRounds'] as int? ?? 0;
+      _quizCorrect = data['quizCorrect'] as int? ?? 0;
+      _perfectRounds = data['perfectRounds'] as int? ?? 0;
+      _bestQuiz = data['bestQuiz'] as int? ?? 0;
+      _bestQuizCombo = data['bestQuizCombo'] as int? ?? 0;
+      _quizDay = data['quizDay'] as String?;
+      _quizXpToday = data['quizXpToday'] as int? ?? 0;
     } catch (_) {
       // Corrupt data: start fresh rather than crash on launch.
       _completed.clear();
@@ -691,6 +840,13 @@ class ProgressStore extends ChangeNotifier {
       _review.clear();
       _graduated.clear();
       _reviews = 0;
+      _quizRounds = 0;
+      _quizCorrect = 0;
+      _perfectRounds = 0;
+      _bestQuiz = 0;
+      _bestQuizCombo = 0;
+      _quizDay = null;
+      _quizXpToday = 0;
     }
   }
 }

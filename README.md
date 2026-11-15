@@ -6,8 +6,9 @@ built to be fun enough to open every day.
 ## What's in it
 
 - **Swipe feed** of 240+ cards in 10 categories, with a "몰랐어요! / 알고 있었어요" reaction on every card.
-- **Progression:** XP, 11 levels, a daily goal, a daily streak, category mastery bonuses and 25 badges. A level "journey" and badge wall live on the profile tab.
+- **Progression:** XP, 11 levels, a daily goal, a daily streak, category mastery bonuses and 28 badges. A level "journey" and badge wall live on the profile tab.
 - **Review mode (spaced repetition):** a card you mark "몰랐어요" comes back after 1, 3, 7, 14 and then 30 days. You see the title first, try to recall it, tap to reveal, and rate it "기억나요" (moves up a step, earns XP) or "헷갈려요" (back to day 1). After the last step the card graduates. At most 20 cards per session. Cards you marked "알고 있었어요" are never reviewed.
+- **Quiz challenge (replayable):** "which topic is this explanation about?" — the card's explanation with its own title hidden, and four look-alike titles from the same category to choose from. Built from the cards you have learned (cards you marked "몰랐어요" come up more often), 10 questions and 3 hearts per round, with a combo bonus. Right answers pay XP (capped at 100 a day so it can't be ground); wrong answers cost a heart and send the card to review. Unlocks after 5 learned cards.
 - **Social:** an anonymous profile, friend codes, weekly friend and global leaderboards, and head-to-head comparison.
 
 ## Adding cards

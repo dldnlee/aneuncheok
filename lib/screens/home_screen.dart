@@ -8,7 +8,9 @@ import '../social/social_store.dart';
 import '../state/progress_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/effects.dart';
+import '../quiz/quiz_generator.dart';
 import 'knowledge_screen.dart';
+import 'quiz_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key, this.onOpenRanking});
@@ -64,6 +66,11 @@ class HomeScreen extends StatelessWidget {
       context,
       fadeSlideRoute(KnowledgeScreen(items: due, review: true, label: '복습')),
     );
+  }
+
+  void _openQuiz(BuildContext context) {
+    HapticFeedback.mediumImpact();
+    Navigator.push(context, fadeSlideRoute(const QuizScreen()));
   }
 
   void _openSaved(BuildContext context) {
@@ -124,6 +131,15 @@ class HomeScreen extends StatelessWidget {
                       child: _ReviewCard(
                         store: store,
                         onTap: () => _openReview(context),
+                      ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: FadeSlideIn(
+                      delay: const Duration(milliseconds: 150),
+                      child: _QuizCard(
+                        store: store,
+                        onTap: () => _openQuiz(context),
                       ),
                     ),
                   ),
@@ -719,6 +735,142 @@ class _ReviewCard extends StatelessWidget {
             ),
           ),
           const Icon(Icons.check_circle_rounded, color: Color(0xFF34D399)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Entry to the replayable quiz. Locked until the player has learned enough
+/// cards to build good questions from.
+class _QuizCard extends StatelessWidget {
+  const _QuizCard({required this.store, required this.onTap});
+
+  final ProgressStore store;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final learned = store.completedCount;
+    final unlocked = learned >= QuizConfig.minCards;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      child: unlocked ? _ready() : _locked(learned),
+    );
+  }
+
+  Widget _ready() {
+    final best = store.bestQuizScore;
+    final capped = store.quizXpLeftToday == 0;
+    final subtitle = [
+      best > 0
+          ? '최고 기록 $best점'
+          : '${QuizConfig.roundSize}문제 · 하트 ${QuizConfig.lives}개',
+      if (capped) '오늘 XP 완료 ✅' else if (best > 0) '또 도전해요!',
+    ].join(' · ');
+
+    return PressableScale(
+      onTap: onTap,
+      pressedScale: 0.97,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Color(0xFF34D399), Color(0xFF0E9F8E)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0E9F8E).withValues(alpha: 0.3),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Text('🧩', style: TextStyle(fontSize: 34, height: 1)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '퀴즈 챌린지',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withValues(alpha: 0.95),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+              ),
+              child: const Icon(
+                Icons.arrow_forward_rounded,
+                color: Color(0xFF0E9F8E),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _locked(int learned) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFEFE7DD), width: 2),
+      ),
+      child: Row(
+        children: [
+          const Text('🧩', style: TextStyle(fontSize: 30, height: 1)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '퀴즈 챌린지',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                  ),
+                ),
+                Text(
+                  '상식을 ${QuizConfig.minCards}개 알아보면 열려요 '
+                  '($learned/${QuizConfig.minCards})',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.inkSoft,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.lock_rounded, color: AppColors.inkSoft),
         ],
       ),
     );

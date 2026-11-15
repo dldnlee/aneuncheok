@@ -54,6 +54,18 @@ Future<void> openFirstCategory(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// Opens the random-cards feed. On a short screen the button is below the
+/// fold, so scroll it into view first.
+Future<void> openShuffle(WidgetTester tester) async {
+  await tester.dragUntilVisible(
+    find.text('랜덤 상식'),
+    find.byType(CustomScrollView),
+    const Offset(0, -80),
+  );
+  await tester.tap(find.text('랜덤 상식'));
+  await tester.pumpAndSettle();
+}
+
 /// Closes level-up and badge pop-ups until none are left.
 Future<void> dismissDialogs(WidgetTester tester) async {
   for (var i = 0; i < 8; i++) {
