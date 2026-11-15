@@ -48,10 +48,60 @@ class XpRewards {
   static const dailyGoal = 25;
   static const categoryMastery = 50;
 
+  /// Remembering a card in review mode.
+  static const reviewed = 5;
+
+  /// Bonus for remembering a card at the last step, when it "graduates".
+  static const graduated = 25;
+
   /// Bonus for the first activity of a day, growing with the streak up to
   /// 7 days. A 1-day streak earns nothing.
   static int streakBonus(int streak) =>
       streak < 2 ? 0 : 5 * math.min(streak, 7);
+}
+
+/// Spaced repetition: a card you marked "몰랐어요" comes back for review after
+/// these many days. Remembering it moves it up one step, forgetting it sends
+/// it back to the first step, and remembering it at the last step graduates it.
+class ReviewSchedule {
+  const ReviewSchedule._();
+
+  static const List<int> intervals = [1, 3, 7, 14, 30];
+
+  /// Most cards in one review session, so a big backlog is not overwhelming.
+  static const sessionLimit = 20;
+}
+
+/// What happened when a card was answered in review mode.
+class ReviewResult {
+  const ReviewResult({
+    this.applied = false,
+    this.remembered = false,
+    this.xpGained = 0,
+    this.nextInDays,
+    this.graduated = false,
+    this.leveledUpTo,
+  });
+
+  /// False when the card was not due, so nothing changed.
+  final bool applied;
+  final bool remembered;
+  final int xpGained;
+
+  /// Days until the card comes back, or null when it graduated.
+  final int? nextInDays;
+  final bool graduated;
+  final Level? leveledUpTo;
+}
+
+class _ReviewState {
+  _ReviewState(this.step, this.due);
+
+  /// Index into [ReviewSchedule.intervals].
+  int step;
+
+  /// Day key (yyyy-mm-dd) the card is next due. Due on or before today = due.
+  String due;
 }
 
 /// What happened as a result of viewing or reacting to a card.
@@ -129,6 +179,13 @@ class ProgressStore extends ChangeNotifier {
   final Set<String> _viewedToday = {};
   final Set<String> _mastered = {};
 
+  /// Cards waiting to be reviewed again (marked "몰랐어요").
+  final Map<String, _ReviewState> _review = {};
+
+  /// Cards that went through every review step. They never come back.
+  final Set<String> _graduated = {};
+  int _reviews = 0;
+
   /// badge id -> day key it was unlocked.
   final Map<String, String> _badgeUnlocked = {};
   final List<AppBadge> _pendingBadges = [];
@@ -173,6 +230,59 @@ class ProgressStore extends ChangeNotifier {
 
   int get goalDays => _goalDays;
   int get shares => _shares;
+
+  // Review (spaced repetition)
+
+  bool isInReview(String id) => _review.containsKey(id);
+
+  bool isDue(String id) {
+    final state = _review[id];
+    return state != null && state.due.compareTo(_today) <= 0;
+  }
+
+  /// Cards due for review today or earlier.
+  int get dueCount => _review.values.where(_isDueState).length;
+
+  /// Every card still in the review queue, due or not.
+  int get reviewQueueCount => _review.length;
+
+  /// Successful reviews so far ("기억나요").
+  int get reviewCount => _reviews;
+
+  /// Cards that finished every review step.
+  int get graduatedCount => _graduated.length;
+
+  bool isGraduated(String id) => _graduated.contains(id);
+
+  /// Ids due for review, longest overdue first, at most [limit].
+  List<String> dueIds({int limit = ReviewSchedule.sessionLimit}) {
+    final due = _review.entries.where((e) => _isDueState(e.value)).toList()
+      ..sort((a, b) {
+        final byDue = a.value.due.compareTo(b.value.due);
+        return byDue != 0 ? byDue : a.key.compareTo(b.key);
+      });
+    return due.take(limit).map((e) => e.key).toList();
+  }
+
+  /// Days until the next card is due, or null when nothing is waiting.
+  /// 0 means something is due today.
+  int? get daysUntilNextReview {
+    if (_review.isEmpty) return null;
+    final earliest = _review.values
+        .map((s) => s.due)
+        .reduce((a, b) => a.compareTo(b) <= 0 ? a : b);
+    return math.max(0, _dayNumber(earliest) - _dayNumber(_today));
+  }
+
+  /// 1-based step of [id] on the review ladder, or null if not in review.
+  int? reviewStep(String id) {
+    final state = _review[id];
+    return state == null ? null : state.step + 1;
+  }
+
+  static int get reviewSteps => ReviewSchedule.intervals.length;
+
+  bool _isDueState(_ReviewState s) => s.due.compareTo(_today) <= 0;
 
   // XP and levels
 
@@ -227,6 +337,8 @@ class ProgressStore extends ChangeNotifier {
       bestDayViews: _bestDayViews,
       completedByCategory: byCategory,
       totalItems: _totalItems,
+      reviews: _reviews,
+      graduated: _graduated.length,
     );
   }
 
@@ -285,6 +397,19 @@ class ProgressStore extends ChangeNotifier {
     final firstTime = !_completed.containsKey(id);
     _completed[id] = newToMe;
 
+    // Cards you did not know join the review queue; cards you already knew
+    // leave it. Graduated cards never come back.
+    if (newToMe) {
+      if (!_graduated.contains(id)) {
+        _review.putIfAbsent(
+          id,
+          () => _ReviewState(0, _dayAfter(ReviewSchedule.intervals[0])),
+        );
+      }
+    } else {
+      _review.remove(id);
+    }
+
     String? mastered;
     if (firstTime) {
       xp += newToMe ? XpRewards.newToMe : XpRewards.alreadyKnew;
@@ -306,6 +431,54 @@ class ProgressStore extends ChangeNotifier {
       streakIncreased: streakUp,
       firstTime: firstTime,
       masteredCategoryId: mastered,
+    );
+  }
+
+  /// Answers a card in review mode. Only cards that are due can be answered,
+  /// so the same card cannot be answered twice for XP.
+  ReviewResult review(String id, {required bool remembered}) {
+    final state = _review[id];
+    if (state == null || !_isDueState(state)) return const ReviewResult();
+
+    final before = level;
+    var xp = 0;
+    final streakUp = _touch();
+    if (streakUp) xp += XpRewards.streakBonus(_streak);
+
+    var graduated = false;
+    int? nextInDays;
+    if (remembered) {
+      _reviews++;
+      xp += XpRewards.reviewed;
+      final next = state.step + 1;
+      if (next >= ReviewSchedule.intervals.length) {
+        _review.remove(id);
+        _graduated.add(id);
+        graduated = true;
+        xp += XpRewards.graduated;
+      } else {
+        state.step = next;
+        nextInDays = ReviewSchedule.intervals[next];
+        state.due = _dayAfter(nextInDays);
+      }
+    } else {
+      state.step = 0;
+      nextInDays = ReviewSchedule.intervals[0];
+      state.due = _dayAfter(nextInDays);
+    }
+
+    if (xp > 0) _gain(xp);
+    _evaluateBadges();
+    _persist();
+    notifyListeners();
+
+    return ReviewResult(
+      applied: true,
+      remembered: remembered,
+      xpGained: xp,
+      nextInDays: nextInDays,
+      graduated: graduated,
+      leveledUpTo: _levelUpFrom(before),
     );
   }
 
@@ -342,6 +515,24 @@ class ProgressStore extends ChangeNotifier {
   String get _yesterday {
     final n = _clock();
     return _dayKey(DateTime(n.year, n.month, n.day - 1));
+  }
+
+  /// The day key [days] days from today.
+  String _dayAfter(int days) {
+    final n = _clock();
+    return _dayKey(DateTime(n.year, n.month, n.day + days));
+  }
+
+  /// Whole days since the epoch for a yyyy-mm-dd key. Uses UTC so daylight
+  /// saving changes cannot make a day 23 or 25 hours long.
+  static int _dayNumber(String key) {
+    final p = key.split('-');
+    return DateTime.utc(
+          int.parse(p[0]),
+          int.parse(p[1]),
+          int.parse(p[2]),
+        ).millisecondsSinceEpoch ~/
+        Duration.millisecondsPerDay;
   }
 
   /// Monday of the current week.
@@ -425,6 +616,12 @@ class ProgressStore extends ChangeNotifier {
         'xp': _xp,
         'weeklyXp': _weeklyXp,
         'weekKey': _weekKey,
+        'review': {
+          for (final e in _review.entries)
+            e.key: {'step': e.value.step, 'due': e.value.due},
+        },
+        'graduated': _graduated.toList(),
+        'reviews': _reviews,
       }),
     );
   }
@@ -464,6 +661,16 @@ class ProgressStore extends ChangeNotifier {
           );
       _weeklyXp = data['weeklyXp'] as int? ?? 0;
       _weekKey = data['weekKey'] as String?;
+      (data['review'] as Map<String, dynamic>? ?? {}).forEach((id, v) {
+        final m = v as Map<String, dynamic>;
+        final step = (m['step'] as int).clamp(
+          0,
+          ReviewSchedule.intervals.length - 1,
+        );
+        _review[id] = _ReviewState(step, m['due'] as String);
+      });
+      _graduated.addAll((data['graduated'] as List? ?? []).cast<String>());
+      _reviews = data['reviews'] as int? ?? 0;
     } catch (_) {
       // Corrupt data: start fresh rather than crash on launch.
       _completed.clear();
@@ -481,6 +688,9 @@ class ProgressStore extends ChangeNotifier {
       _xp = 0;
       _weeklyXp = 0;
       _weekKey = null;
+      _review.clear();
+      _graduated.clear();
+      _reviews = 0;
     }
   }
 }

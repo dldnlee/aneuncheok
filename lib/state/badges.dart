@@ -14,6 +14,8 @@ class ProgressStats {
     required this.bestDayViews,
     required this.completedByCategory,
     required this.totalItems,
+    this.reviews = 0,
+    this.graduated = 0,
   });
 
   final int completed;
@@ -31,6 +33,12 @@ class ProgressStats {
   final int bestDayViews;
   final Map<String, int> completedByCategory;
   final int totalItems;
+
+  /// Successful answers in review mode ("기억나요").
+  final int reviews;
+
+  /// Cards that went through every review step.
+  final int graduated;
 }
 
 class AppBadge {
@@ -104,6 +112,22 @@ List<AppBadge> buildBadges({
       description: '상식 200개 알아보기',
       goal: 200,
       progress: (s) => s.completed,
+    ),
+    AppBadge(
+      id: 'review_10',
+      emoji: '🧠',
+      name: '복습왕',
+      description: '복습에서 "기억나요"를 10번 누르기',
+      goal: 10,
+      progress: (s) => s.reviews,
+    ),
+    AppBadge(
+      id: 'graduate_5',
+      emoji: '🎓',
+      name: '졸업생',
+      description: '복습을 끝까지 마친 상식 5개 만들기',
+      goal: 5,
+      progress: (s) => s.graduated,
     ),
     AppBadge(
       id: 'streak_3',

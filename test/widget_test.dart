@@ -173,6 +173,32 @@ void main() {
       }
     });
 
+    testWidgets('the answer buttons stay on screen on a small phone', (
+      tester,
+    ) async {
+      const screen = Size(320, 568);
+      await pumpApp(tester, size: screen);
+      await tester.tap(find.text('랜덤 상식'));
+      await tester.pumpAndSettle();
+
+      final controller = tester
+          .widget<PageView>(find.byType(PageView))
+          .controller!;
+      for (var i = 0; i < knowledgeItems.length; i++) {
+        controller.jumpToPage(i);
+        await tester.pumpAndSettle();
+        await dismissDialogs(tester);
+        for (final label in [newToMeLabel, alreadyKnewLabel]) {
+          final rect = tester.getRect(find.text(label));
+          expect(
+            rect.top >= 0 && rect.bottom <= screen.height,
+            isTrue,
+            reason: '"$label" is off screen on card $i ($rect)',
+          );
+        }
+      }
+    });
+
     testWidgets('scrolling past the last card shows the finish screen', (
       tester,
     ) async {

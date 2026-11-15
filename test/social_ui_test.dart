@@ -4,6 +4,7 @@ import 'package:aneuncheok/social/identity.dart';
 import 'package:aneuncheok/social/models.dart';
 import 'package:aneuncheok/social/social_repository.dart';
 import 'package:aneuncheok/state/progress_store.dart';
+import 'package:aneuncheok/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -341,8 +342,15 @@ void main() {
       final app = await pumpApp(tester, size: _tall);
       await openTab(tester, '나');
 
-      // Shown in the section heading and in the stats tile.
-      expect(find.text('0 / ${app.progress.badges.length}'), findsNWidgets(2));
+      // The badge count in the section heading. (A badge tile can read the
+      // same, e.g. a 25-card badge shows "0 / 25", so scope to the heading.)
+      expect(
+        find.descendant(
+          of: find.byType(SectionHeading),
+          matching: find.text('0 / ${app.progress.badges.length}'),
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('첫걸음'));
       await tester.pumpAndSettle();
@@ -363,7 +371,13 @@ void main() {
       await pumpApp(tester, progress: progress, size: _tall);
       await openTab(tester, '나');
 
-      expect(find.text('1 / ${progress.badges.length}'), findsNWidgets(2));
+      expect(
+        find.descendant(
+          of: find.byType(SectionHeading),
+          matching: find.text('1 / ${progress.badges.length}'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('획득!'), findsOneWidget);
 
       await tester.tap(find.text('첫걸음'));
