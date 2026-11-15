@@ -33,7 +33,8 @@ void main() {
       expect(find.text('다음 레벨까지 ${levels[1].minXp} XP'), findsOneWidget);
       expect(find.text('🎯 오늘의 목표'), findsOneWidget);
       final first = getItemsByCategory(categories.first.id).length;
-      expect(find.text('0 / $first 알았어요'), findsOneWidget);
+      // Several categories can have the same number of cards.
+      expect(find.text('0 / $first 알았어요'), findsWidgets);
     });
 
     testWidgets('shows the goal as reached once five cards were seen', (
@@ -383,10 +384,23 @@ void main() {
       );
 
       await tester.pumpAndSettle();
-      // The level-up dialog comes first, then the badge.
-      expect(find.text('LEVEL UP!'), findsOneWidget);
-      await tester.tap(find.text('계속하기'));
-      await tester.pumpAndSettle();
+      // If this reaction also crosses a level, that dialog comes first,
+      // then the badge.
+      final xpBefore = ids.length - 1;
+      final crossesLevel =
+          levelForXp(
+            xpBefore * XpRewards.newToMe +
+                XpRewards.newToMe +
+                XpRewards.categoryMastery,
+          ) !=
+          levelForXp(xpBefore * XpRewards.newToMe);
+      if (crossesLevel) {
+        expect(find.text('LEVEL UP!'), findsOneWidget);
+        await tester.tap(find.text('계속하기'));
+        await tester.pumpAndSettle();
+      } else {
+        expect(find.text('LEVEL UP!'), findsNothing);
+      }
       expect(find.text('NEW BADGE!'), findsOneWidget);
       expect(find.text('${category.name} 박사'), findsOneWidget);
       await dismissDialogs(tester);

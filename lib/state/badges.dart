@@ -90,6 +90,22 @@ List<AppBadge> buildBadges({
       progress: (s) => s.completed,
     ),
     AppBadge(
+      id: 'knowledge_100',
+      emoji: '📖',
+      name: '상식 100',
+      description: '상식 100개 알아보기',
+      goal: 100,
+      progress: (s) => s.completed,
+    ),
+    AppBadge(
+      id: 'knowledge_200',
+      emoji: '🏛️',
+      name: '상식 200',
+      description: '상식 200개 알아보기',
+      goal: 200,
+      progress: (s) => s.completed,
+    ),
+    AppBadge(
       id: 'streak_3',
       emoji: '🔥',
       name: '3일 연속',

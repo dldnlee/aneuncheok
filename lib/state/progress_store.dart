@@ -26,6 +26,11 @@ const List<Level> levels = [
   Level(400, '🎓', '상식 박사'),
   Level(600, '🏆', '상식 달인'),
   Level(850, '👑', '상식 마스터'),
+  // The card library has grown well past 200 cards, so there is room above
+  // the old cap for players who keep going.
+  Level(1200, '🦸', '상식 영웅'),
+  Level(1700, '🌟', '상식 레전드'),
+  Level(2300, '💎', '상식 그랜드마스터'),
 ];
 
 /// The level a player with [xp] total XP is on.

@@ -30,7 +30,7 @@ Future<TestApp> pumpApp(
   WidgetTester tester, {
   ProgressStore? progress,
   SocialRepository? repository,
-  Size size = const Size(400, 1400),
+  Size size = const Size(400, 2600),
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
