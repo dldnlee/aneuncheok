@@ -21,7 +21,8 @@ const List<KnowledgeItem> environmentCards = [
     categoryId: 'environment',
     emoji: '🍖',
     title: '음식물 쓰레기가 아닌 것',
-    content: '뼈다귀, 조개껍데기, 달걀 껍데기, 양파 껍질처럼 사료나 퇴비로 쓰기 어려운 것은 대표적인 일반 쓰레기예요.',
+    content:
+        '뼈다귀, 조개껍데기, 달걀 껍데기, 양파 껍질처럼 사료나 퇴비로 쓰기 어려운 것은 대표적인 일반 쓰레기예요. 세부 기준은 지역마다 조금 다를 수 있어요.',
   ),
   KnowledgeItem(
     id: 'env4',
@@ -36,7 +37,8 @@ const List<KnowledgeItem> environmentCards = [
     categoryId: 'environment',
     emoji: '💊',
     title: '남은 약은 약국에',
-    content: '남은 약을 변기나 일반 쓰레기로 버리면 환경이 오염될 수 있어요. 폐의약품은 약국이나 보건소의 수거함에 버리세요.',
+    content:
+        '남은 약을 변기나 일반 쓰레기로 버리면 환경이 오염될 수 있어요. 약국·보건소 수거함에 버리고, 알약은 지역에 따라 우체통에 넣을 수도 있어요(물약은 제외).',
   ),
   KnowledgeItem(
     id: 'env6',

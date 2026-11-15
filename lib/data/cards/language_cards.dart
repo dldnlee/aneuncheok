@@ -16,7 +16,7 @@ const List<KnowledgeItem> languageCards = [
     emoji: '🤔',
     title: '안 vs 않',
     content:
-        '"안"은 "아니"의 준말로 동사 앞에 쓰고, "않-"은 "아니하-"의 준말로 "-지 않다" 꼴로 써요. 안 먹어요, 먹지 않아요가 맞아요.',
+        '"안"은 "아니"의 준말로 동사·형용사 앞에 쓰고, "않-"은 "아니하-"의 준말로 "-지 않다" 꼴로 써요. 안 먹어요, 먹지 않아요가 맞아요.',
   ),
   KnowledgeItem(
     id: 'lang3',
@@ -154,7 +154,8 @@ const List<KnowledgeItem> languageCards = [
     categoryId: 'language',
     emoji: '🐉',
     title: '미리내',
-    content: '"미리내"는 은하수를 뜻하는 순우리말이에요. 용을 뜻하는 옛말 "미르"와 시내를 뜻하는 "내"가 합쳐진 말이에요.',
+    content:
+        '"미리내"는 은하수를 뜻하는 우리말로, 사전에는 은하수의 방언으로 올라 있어요. 용의 옛말 "미르"와 "내"가 합쳐졌다는 풀이가 널리 알려져 있어요.',
   ),
   KnowledgeItem(
     id: 'lang22',
