@@ -7,9 +7,12 @@ import 'package:flutter/services.dart';
 import '../data/dummy_data.dart';
 import '../models/category.dart';
 import '../models/knowledge_item.dart';
+import '../social/social_store.dart';
 import '../state/progress_store.dart';
 import '../theme/app_theme.dart';
+import '../widgets/common.dart';
 import '../widgets/effects.dart';
+import 'profile_screen.dart' show BadgeDialog;
 
 /// Full-screen vertical feed of knowledge cards.
 ///
@@ -43,10 +46,18 @@ class _Pop {
 
 class _KnowledgeScreenState extends State<KnowledgeScreen> {
   late final ProgressStore _store;
+  late final SocialStore _social;
   final _pageController = PageController();
   final _confetti = GlobalKey<ConfettiLayerState>();
 
   int _page = 0;
+
+  /// XP earned during this visit - shown on the finish screen.
+  int _sessionXp = 0;
+
+  /// Level-ups and badges wait here so dialogs show one at a time.
+  final List<Level> _pendingLevels = [];
+  bool _celebrating = false;
   String _toastText = '';
   bool _toastVisible = false;
   Timer? _toastTimer;
@@ -66,6 +77,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   void initState() {
     super.initState();
     _store = ProgressScope.read(context);
+    _social = SocialScope.read(context);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _onViewed(0);
     });
@@ -75,6 +87,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   void dispose() {
     _toastTimer?.cancel();
     _pageController.dispose();
+    // Let friends see what I just earned.
+    _social.publishMine();
     super.dispose();
   }
 
@@ -83,13 +97,24 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   void _onViewed(int index) {
     if (index >= _items.length) return;
     final result = _store.recordView(_items[index].id);
+    _sessionXp += result.xpGained;
+
     if (result.goalReached) {
-      _showToast('🎯 오늘 목표 달성! 대단해요');
+      _showToast('🎯 오늘 목표 달성! +${XpRewards.dailyGoal} XP');
       _confetti.currentState?.burst(strength: 1.6);
       HapticFeedback.heavyImpact();
     } else if (result.streakIncreased) {
-      _showToast('🔥 ${_store.currentStreak}일 연속! 멋져요');
+      final bonus = XpRewards.streakBonus(_store.currentStreak);
+      _showToast(
+        bonus > 0
+            ? '🔥 ${_store.currentStreak}일 연속! +$bonus XP'
+            : '🔥 ${_store.currentStreak}일 연속! 멋져요',
+      );
     }
+
+    final level = result.leveledUpTo;
+    if (level != null) _pendingLevels.add(level);
+    _celebrate();
   }
 
   void _onPageChanged(int index) {
@@ -100,34 +125,82 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
 
   void _react(KnowledgeItem item, {required bool newToMe}) {
     final result = _store.complete(item.id, newToMe: newToMe);
+    _sessionXp += result.xpGained;
     HapticFeedback.mediumImpact();
+
     if (result.firstTime) {
       _confetti.currentState?.burst();
       _addPop(
         _PopKind.reward,
-        newToMe ? '+1  새로 알았다! 🌟' : '+1  역시 알고 있었네! 😎',
+        newToMe
+            ? '+${result.xpGained} XP  새로 알았다! 🌟'
+            : '+${result.xpGained} XP  역시 알고 있었네! 😎',
       );
     }
+
+    final mastered = result.masteredCategoryId;
+    if (mastered != null) {
+      final category = categories.firstWhere((c) => c.id == mastered);
+      _showToast('🏆 ${category.name} 정복! +${XpRewards.categoryMastery} XP');
+      _confetti.currentState?.burst(strength: 1.8);
+      HapticFeedback.heavyImpact();
+    }
+
     final level = result.leveledUpTo;
-    if (level != null) _showLevelUp(level);
+    if (level != null) _pendingLevels.add(level);
+    _celebrate();
   }
 
   void _toggleSave(KnowledgeItem item) {
     final saved = _store.toggleSaved(item.id);
     HapticFeedback.lightImpact();
     if (saved) _addPop(_PopKind.heart, '');
+    _celebrate();
   }
 
   void _doubleTapSave(KnowledgeItem item) {
     _store.save(item.id);
     HapticFeedback.lightImpact();
     _addPop(_PopKind.heart, '');
+    _celebrate();
   }
 
   Future<void> _share(KnowledgeItem item) async {
     await Clipboard.setData(ClipboardData(text: item.shareText));
     if (!mounted) return;
+    _store.recordShare();
     _showToast('📋 복사했어요! 친구한테 아는척 해보세요');
+    _celebrate();
+  }
+
+  /// Shows pending level-ups and new badges one after another. Safe to call
+  /// repeatedly: if it is already running, it picks up anything new when the
+  /// current dialog closes.
+  Future<void> _celebrate() async {
+    if (_celebrating) return;
+    _celebrating = true;
+    try {
+      while (mounted) {
+        if (_pendingLevels.isNotEmpty) {
+          await _showLevelUp(_pendingLevels.removeAt(0));
+          continue;
+        }
+        final badges = _store.drainNewBadges();
+        if (badges.isEmpty) break;
+        for (final badge in badges) {
+          if (!mounted) return;
+          _confetti.currentState?.burst(strength: 1.4);
+          HapticFeedback.heavyImpact();
+          await showDialog<void>(
+            context: context,
+            builder: (_) =>
+                BadgeDialog(badge: badge, unlocked: true, celebrate: true),
+          );
+        }
+      }
+    } finally {
+      _celebrating = false;
+    }
   }
 
   void _showToast(String text) {
@@ -150,9 +223,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     setState(() => _pops.removeWhere((p) => p.id == id));
   }
 
-  void _showLevelUp(Level level) {
+  Future<void> _showLevelUp(Level level) {
     final number = levels.indexOf(level) + 1;
-    showDialog<void>(
+    _confetti.currentState?.burst(strength: 1.6);
+    return showDialog<void>(
       context: context,
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
@@ -248,6 +322,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   return _FinishCard(
                     store: _store,
                     ids: _items.map((i) => i.id).toList(),
+                    sessionXp: _sessionXp,
                     onRestart: () => _pageController.animateToPage(
                       0,
                       duration: const Duration(milliseconds: 500),
@@ -940,12 +1015,16 @@ class _FinishCard extends StatelessWidget {
   const _FinishCard({
     required this.store,
     required this.ids,
+    required this.sessionXp,
     required this.onRestart,
     required this.onHome,
   });
 
   final ProgressStore store;
   final List<String> ids;
+
+  /// XP earned during this visit.
+  final int sessionXp;
   final VoidCallback onRestart;
   final VoidCallback onHome;
 
@@ -1014,8 +1093,29 @@ class _FinishCard extends StatelessWidget {
                           color: Colors.white.withValues(alpha: 0.9),
                         ),
                       ),
-                      if (streak > 0) ...[
+                      if (sessionXp > 0) ...[
                         const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 9,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.star,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '⭐ 이번에 +$sessionXp XP 얻었어요!',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (streak > 0) ...[
+                        const SizedBox(height: 10),
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -1035,7 +1135,34 @@ class _FinishCard extends StatelessWidget {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 36),
+                      const SizedBox(height: 22),
+                      Text(
+                        '${store.level.emoji} Lv.${store.levelNumber}  ${store.level.name}',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ProgressBar(
+                        value: store.levelProgress,
+                        fill: AppColors.star,
+                        track: Colors.white.withValues(alpha: 0.25),
+                        height: 12,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        store.nextLevel == null
+                            ? '최고 레벨이에요! 👑'
+                            : '다음 레벨까지 ${store.nextLevel!.minXp - store.xp} XP',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white.withValues(alpha: 0.9),
+                        ),
+                      ),
+                      const SizedBox(height: 30),
                       _FinishButton(
                         label: '🔄 처음부터 다시',
                         filled: true,

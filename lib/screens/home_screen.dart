@@ -4,13 +4,17 @@ import 'package:flutter/services.dart';
 import '../data/dummy_data.dart';
 import '../models/category.dart';
 import '../models/knowledge_item.dart';
+import '../social/social_store.dart';
 import '../state/progress_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/effects.dart';
 import 'knowledge_screen.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.onOpenRanking});
+
+  /// Switches to the ranking tab (used by the rank teaser card).
+  final VoidCallback? onOpenRanking;
 
   /// Cards the user has not reacted to yet come first, so the feed always
   /// opens on something new.
@@ -91,6 +95,13 @@ class HomeScreen extends StatelessWidget {
                       child: _HeroCard(store: store),
                     ),
                   ),
+                  if (onOpenRanking != null)
+                    SliverToBoxAdapter(
+                      child: FadeSlideIn(
+                        delay: const Duration(milliseconds: 120),
+                        child: _RankTeaser(onTap: onOpenRanking!),
+                      ),
+                    ),
                   SliverToBoxAdapter(
                     child: FadeSlideIn(
                       delay: const Duration(milliseconds: 160),
@@ -359,7 +370,7 @@ class _HeroCard extends StatelessWidget {
                               Text(
                                 next == null
                                     ? '최고 레벨이에요! 👑'
-                                    : '다음 레벨까지 ${next.minCompleted - store.completedCount}개',
+                                    : '다음 레벨까지 ${next.minXp - store.xp} XP',
                                 style: TextStyle(
                                   fontSize: 12.5,
                                   fontWeight: FontWeight.w700,
@@ -483,6 +494,74 @@ class _Bar extends StatelessWidget {
                 borderRadius: BorderRadius.circular(height),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Where do I stand among friends?" - the nudge that links to the ranking.
+class _RankTeaser extends StatelessWidget {
+  const _RankTeaser({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final social = SocialScope.of(context);
+    // Nothing to compare yet (not loaded, or no friends): stay out of the way.
+    if (!social.loaded || !social.hasFriends) return const SizedBox.shrink();
+
+    final rank = social.friendRank!;
+    final rival = social.rivalAbove;
+    final subtitle = rival == null
+        ? '지금 친구들 중 1등이에요! 👑'
+        : '${rival.profile.avatar} ${rival.profile.nickname}님까지 ${social.xpToPass(rival.profile)} XP';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      child: PressableScale(
+        onTap: onTap,
+        pressedScale: 0.97,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: const Color(0xFFEFE7DD), width: 2),
+          ),
+          child: Row(
+            children: [
+              const Text('🏆', style: TextStyle(fontSize: 32, height: 1)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '친구 중 $rank위',
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.ink,
+                      ),
+                    ),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.inkSoft,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: AppColors.inkSoft),
+            ],
           ),
         ),
       ),
