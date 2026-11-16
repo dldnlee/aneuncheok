@@ -14,6 +14,11 @@ class ProgressStats {
     required this.bestDayViews,
     required this.completedByCategory,
     required this.totalItems,
+    this.reviews = 0,
+    this.graduated = 0,
+    this.quizRounds = 0,
+    this.quizCorrect = 0,
+    this.perfectRounds = 0,
   });
 
   final int completed;
@@ -31,6 +36,17 @@ class ProgressStats {
   final int bestDayViews;
   final Map<String, int> completedByCategory;
   final int totalItems;
+
+  /// Successful answers in review mode ("기억나요").
+  final int reviews;
+
+  /// Cards that went through every review step.
+  final int graduated;
+
+  /// Quiz rounds played to the end, correct answers, and flawless rounds.
+  final int quizRounds;
+  final int quizCorrect;
+  final int perfectRounds;
 }
 
 class AppBadge {
@@ -88,6 +104,62 @@ List<AppBadge> buildBadges({
       description: '상식 25개 알아보기',
       goal: 25,
       progress: (s) => s.completed,
+    ),
+    AppBadge(
+      id: 'knowledge_100',
+      emoji: '📖',
+      name: '상식 100',
+      description: '상식 100개 알아보기',
+      goal: 100,
+      progress: (s) => s.completed,
+    ),
+    AppBadge(
+      id: 'knowledge_200',
+      emoji: '🏛️',
+      name: '상식 200',
+      description: '상식 200개 알아보기',
+      goal: 200,
+      progress: (s) => s.completed,
+    ),
+    AppBadge(
+      id: 'review_10',
+      emoji: '🧠',
+      name: '복습왕',
+      description: '복습에서 "기억나요"를 10번 누르기',
+      goal: 10,
+      progress: (s) => s.reviews,
+    ),
+    AppBadge(
+      id: 'graduate_5',
+      emoji: '🎓',
+      name: '졸업생',
+      description: '복습을 끝까지 마친 상식 5개 만들기',
+      goal: 5,
+      progress: (s) => s.graduated,
+    ),
+    AppBadge(
+      id: 'quiz_first',
+      emoji: '🧩',
+      name: '퀴즈 입문',
+      description: '퀴즈 한 판 끝까지 하기',
+      goal: 1,
+      progress: (s) => s.quizRounds,
+    ),
+    AppBadge(
+      id: 'quiz_perfect',
+      emoji: '💯',
+      name: '만점!',
+      description: '퀴즈에서 만점 받기',
+      goal: 1,
+      progress: (s) => s.perfectRounds,
+    ),
+    AppBadge(
+      id: 'quiz_50',
+      emoji: '🥇',
+      name: '퀴즈 달인',
+      description: '퀴즈 정답 50개 맞히기',
+      goal: 50,
+      progress: (s) => s.quizCorrect,
     ),
     AppBadge(
       id: 'streak_3',

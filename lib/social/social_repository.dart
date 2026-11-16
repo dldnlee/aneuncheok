@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/dummy_data.dart';
+import '../state/badges.dart';
 import 'identity.dart';
 import 'models.dart';
 
@@ -76,6 +77,12 @@ class DemoSocialRepository implements SocialRepository {
   final DateTime Function() _clock;
   late final List<_Bot> _bots;
   final Set<String> _friendCodes = {};
+
+  /// How many badges exist, so simulated players never "own" more than that.
+  late final int _badgeTotal = buildBadges(
+    categories: categories,
+    items: knowledgeItems,
+  ).length;
 
   @override
   bool get isDemo => true;
@@ -190,7 +197,7 @@ class DemoSocialRepository implements SocialRepository {
       weeklyXp: weekly,
       streak: bot.streak,
       completed: min(knowledgeItems.length, total ~/ 9),
-      badgeCount: min(17, total ~/ 55),
+      badgeCount: min(_badgeTotal, total ~/ 55),
     );
   }
 
