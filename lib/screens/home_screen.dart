@@ -8,7 +8,9 @@ import '../social/social_store.dart';
 import '../state/progress_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/effects.dart';
+import '../quiz/quiz_generator.dart';
 import 'knowledge_screen.dart';
+import 'quiz_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key, this.onOpenRanking});
@@ -48,6 +50,27 @@ class HomeScreen extends StatelessWidget {
       context,
       fadeSlideRoute(KnowledgeScreen(items: _freshFirst(shuffled, store))),
     );
+  }
+
+  void _openReview(BuildContext context) {
+    final store = ProgressScope.read(context);
+    final byId = {for (final item in knowledgeItems) item.id: item};
+    // Longest overdue first; skip any id that no longer exists in the data.
+    final due = [
+      for (final id in store.dueIds())
+        if (byId[id] != null) byId[id]!,
+    ];
+    if (due.isEmpty) return;
+    HapticFeedback.mediumImpact();
+    Navigator.push(
+      context,
+      fadeSlideRoute(KnowledgeScreen(items: due, review: true, label: '복습')),
+    );
+  }
+
+  void _openQuiz(BuildContext context) {
+    HapticFeedback.mediumImpact();
+    Navigator.push(context, fadeSlideRoute(const QuizScreen()));
   }
 
   void _openSaved(BuildContext context) {
@@ -102,6 +125,24 @@ class HomeScreen extends StatelessWidget {
                         child: _RankTeaser(onTap: onOpenRanking!),
                       ),
                     ),
+                  SliverToBoxAdapter(
+                    child: FadeSlideIn(
+                      delay: const Duration(milliseconds: 140),
+                      child: _ReviewCard(
+                        store: store,
+                        onTap: () => _openReview(context),
+                      ),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: FadeSlideIn(
+                      delay: const Duration(milliseconds: 150),
+                      child: _QuizCard(
+                        store: store,
+                        onTap: () => _openQuiz(context),
+                      ),
+                    ),
+                  ),
                   SliverToBoxAdapter(
                     child: FadeSlideIn(
                       delay: const Duration(milliseconds: 160),
@@ -564,6 +605,273 @@ class _RankTeaser extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Spaced repetition entry point: cards you did not know come back after
+/// 1, 3, 7, 14 and 30 days. Hidden until there is something in the queue.
+class _ReviewCard extends StatelessWidget {
+  const _ReviewCard({required this.store, required this.onTap});
+
+  final ProgressStore store;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    if (store.reviewQueueCount == 0) return const SizedBox.shrink();
+
+    final due = store.dueCount;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      child: due > 0 ? _due(due) : _allDone(),
+    );
+  }
+
+  Widget _due(int due) {
+    final capped = due > ReviewSchedule.sessionLimit;
+    return PressableScale(
+      onTap: onTap,
+      pressedScale: 0.97,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Color(0xFF22D3EE), Color(0xFF4F46E5)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF4F46E5).withValues(alpha: 0.3),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Text('🧠', style: TextStyle(fontSize: 34, height: 1)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '복습할 상식 $due개',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    capped
+                        ? '오늘은 ${ReviewSchedule.sessionLimit}개씩 복습해요'
+                        : '다시 보면 오래 기억에 남아요!',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withValues(alpha: 0.92),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+              ),
+              child: const Icon(
+                Icons.arrow_forward_rounded,
+                color: Color(0xFF4F46E5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _allDone() {
+    final days = store.daysUntilNextReview ?? 1;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFEFE7DD), width: 2),
+      ),
+      child: Row(
+        children: [
+          const Text('🧠', style: TextStyle(fontSize: 30, height: 1)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '오늘 복습 끝!',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                  ),
+                ),
+                Text(
+                  days <= 1 ? '다음 복습은 내일이에요' : '다음 복습은 $days일 뒤예요',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.inkSoft,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.check_circle_rounded, color: Color(0xFF34D399)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Entry to the replayable quiz. Locked until the player has learned enough
+/// cards to build good questions from.
+class _QuizCard extends StatelessWidget {
+  const _QuizCard({required this.store, required this.onTap});
+
+  final ProgressStore store;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final learned = store.completedCount;
+    final unlocked = learned >= QuizConfig.minCards;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 14),
+      child: unlocked ? _ready() : _locked(learned),
+    );
+  }
+
+  Widget _ready() {
+    final best = store.bestQuizScore;
+    final capped = store.quizXpLeftToday == 0;
+    final subtitle = [
+      best > 0
+          ? '최고 기록 $best점'
+          : '${QuizConfig.roundSize}문제 · 하트 ${QuizConfig.lives}개',
+      if (capped) '오늘 XP 완료 ✅' else if (best > 0) '또 도전해요!',
+    ].join(' · ');
+
+    return PressableScale(
+      onTap: onTap,
+      pressedScale: 0.97,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Color(0xFF34D399), Color(0xFF0E9F8E)],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF0E9F8E).withValues(alpha: 0.3),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const Text('🧩', style: TextStyle(fontSize: 34, height: 1)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '퀴즈 챌린지',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withValues(alpha: 0.95),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+              ),
+              child: const Icon(
+                Icons.arrow_forward_rounded,
+                color: Color(0xFF0E9F8E),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _locked(int learned) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFEFE7DD), width: 2),
+      ),
+      child: Row(
+        children: [
+          const Text('🧩', style: TextStyle(fontSize: 30, height: 1)),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '퀴즈 챌린지',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.ink,
+                  ),
+                ),
+                Text(
+                  '상식을 ${QuizConfig.minCards}개 알아보면 열려요 '
+                  '($learned/${QuizConfig.minCards})',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.inkSoft,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.lock_rounded, color: AppColors.inkSoft),
+        ],
       ),
     );
   }

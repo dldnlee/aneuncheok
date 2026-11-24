@@ -30,7 +30,7 @@ Future<TestApp> pumpApp(
   WidgetTester tester, {
   ProgressStore? progress,
   SocialRepository? repository,
-  Size size = const Size(400, 1400),
+  Size size = const Size(400, 2600),
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -51,6 +51,18 @@ Future<TestApp> pumpApp(
 
 Future<void> openFirstCategory(WidgetTester tester) async {
   await tester.tap(find.text(categories.first.name));
+  await tester.pumpAndSettle();
+}
+
+/// Opens the random-cards feed. On a short screen the button is below the
+/// fold, so scroll it into view first.
+Future<void> openShuffle(WidgetTester tester) async {
+  await tester.dragUntilVisible(
+    find.text('랜덤 상식'),
+    find.byType(CustomScrollView),
+    const Offset(0, -80),
+  );
+  await tester.tap(find.text('랜덤 상식'));
   await tester.pumpAndSettle();
 }
 

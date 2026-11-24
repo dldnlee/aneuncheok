@@ -189,8 +189,8 @@ void main() {
 
     test('top level reports full progress and no next level', () {
       final store = ProgressStore(clock: () => DateTime(2026, 1, 1));
-      // 90 reactions x 10 XP is well past the top threshold.
-      for (var i = 0; i < 90; i++) {
+      // Keep reacting until the top threshold is reached.
+      for (var i = 0; store.xp < levels.last.minXp; i++) {
         store.complete('c$i', newToMe: true);
       }
       expect(store.level, same(levels.last));

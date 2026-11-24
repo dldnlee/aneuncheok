@@ -1,8 +1,10 @@
+import 'package:aneuncheok/data/dummy_data.dart';
 import 'package:aneuncheok/screens/profile_screen.dart';
 import 'package:aneuncheok/social/identity.dart';
 import 'package:aneuncheok/social/models.dart';
 import 'package:aneuncheok/social/social_repository.dart';
 import 'package:aneuncheok/state/progress_store.dart';
+import 'package:aneuncheok/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,7 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'test_helpers.dart';
 
 /// Tall enough that the whole profile/ranking list is built.
-const _tall = Size(400, 3600);
+const _tall = Size(400, 6000);
 
 void main() {
   group('navigation', () {
@@ -310,7 +312,7 @@ void main() {
         find.text('다음 레벨까지 ${progress.nextLevel!.minXp - progress.xp} XP'),
         findsWidgets,
       );
-      expect(find.text('4 / 65'), findsOneWidget);
+      expect(find.text('4 / ${knowledgeItems.length}'), findsOneWidget);
       expect(find.text('알게 된 상식'), findsOneWidget);
     });
 
@@ -337,11 +339,18 @@ void main() {
     testWidgets('locked badges show their progress; tapping explains', (
       tester,
     ) async {
-      await pumpApp(tester, size: _tall);
+      final app = await pumpApp(tester, size: _tall);
       await openTab(tester, '나');
 
-      // Shown in the section heading and in the stats tile.
-      expect(find.text('0 / 17'), findsNWidgets(2));
+      // The badge count in the section heading. (A badge tile can read the
+      // same, e.g. a 25-card badge shows "0 / 25", so scope to the heading.)
+      expect(
+        find.descendant(
+          of: find.byType(SectionHeading),
+          matching: find.text('0 / ${app.progress.badges.length}'),
+        ),
+        findsOneWidget,
+      );
 
       await tester.tap(find.text('첫걸음'));
       await tester.pumpAndSettle();
@@ -362,7 +371,13 @@ void main() {
       await pumpApp(tester, progress: progress, size: _tall);
       await openTab(tester, '나');
 
-      expect(find.text('1 / 17'), findsNWidgets(2));
+      expect(
+        find.descendant(
+          of: find.byType(SectionHeading),
+          matching: find.text('1 / ${progress.badges.length}'),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('획득!'), findsOneWidget);
 
       await tester.tap(find.text('첫걸음'));

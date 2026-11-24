@@ -33,7 +33,8 @@ void main() {
       expect(find.text('다음 레벨까지 ${levels[1].minXp} XP'), findsOneWidget);
       expect(find.text('🎯 오늘의 목표'), findsOneWidget);
       final first = getItemsByCategory(categories.first.id).length;
-      expect(find.text('0 / $first 알았어요'), findsOneWidget);
+      // Several categories can have the same number of cards.
+      expect(find.text('0 / $first 알았어요'), findsWidgets);
     });
 
     testWidgets('shows the goal as reached once five cards were seen', (
@@ -51,9 +52,18 @@ void main() {
 
     testWidgets('lays out on a small phone without overflow', (tester) async {
       await pumpApp(tester, size: const Size(320, 568));
+      expect(tester.takeException(), isNull);
+      expect(find.text('아는척'), findsOneWidget);
 
+      // The home screen scrolls; lay out everything below the fold too.
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
       expect(find.text('랜덤 상식'), findsOneWidget);
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -3000));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('tapping saved with nothing saved explains how to save', (
@@ -96,8 +106,7 @@ void main() {
     testWidgets('shuffle opens a feed with every item', (tester) async {
       await pumpApp(tester);
 
-      await tester.tap(find.text('랜덤 상식'));
-      await tester.pumpAndSettle();
+      await openShuffle(tester);
 
       expect(find.text('1 / ${knowledgeItems.length}'), findsOneWidget);
     });
@@ -159,8 +168,7 @@ void main() {
 
     testWidgets('every card and pop-up fits on a small phone', (tester) async {
       await pumpApp(tester, size: const Size(320, 568));
-      await tester.tap(find.text('랜덤 상식'));
-      await tester.pumpAndSettle();
+      await openShuffle(tester);
 
       final controller = tester
           .widget<PageView>(find.byType(PageView))
@@ -169,6 +177,31 @@ void main() {
         controller.jumpToPage(i);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: 'overflow on card $i');
+      }
+    });
+
+    testWidgets('the answer buttons stay on screen on a small phone', (
+      tester,
+    ) async {
+      const screen = Size(320, 568);
+      await pumpApp(tester, size: screen);
+      await openShuffle(tester);
+
+      final controller = tester
+          .widget<PageView>(find.byType(PageView))
+          .controller!;
+      for (var i = 0; i < knowledgeItems.length; i++) {
+        controller.jumpToPage(i);
+        await tester.pumpAndSettle();
+        await dismissDialogs(tester);
+        for (final label in [newToMeLabel, alreadyKnewLabel]) {
+          final rect = tester.getRect(find.text(label));
+          expect(
+            rect.top >= 0 && rect.bottom <= screen.height,
+            isTrue,
+            reason: '"$label" is off screen on card $i ($rect)',
+          );
+        }
       }
     });
 
@@ -383,10 +416,23 @@ void main() {
       );
 
       await tester.pumpAndSettle();
-      // The level-up dialog comes first, then the badge.
-      expect(find.text('LEVEL UP!'), findsOneWidget);
-      await tester.tap(find.text('계속하기'));
-      await tester.pumpAndSettle();
+      // If this reaction also crosses a level, that dialog comes first,
+      // then the badge.
+      final xpBefore = ids.length - 1;
+      final crossesLevel =
+          levelForXp(
+            xpBefore * XpRewards.newToMe +
+                XpRewards.newToMe +
+                XpRewards.categoryMastery,
+          ) !=
+          levelForXp(xpBefore * XpRewards.newToMe);
+      if (crossesLevel) {
+        expect(find.text('LEVEL UP!'), findsOneWidget);
+        await tester.tap(find.text('계속하기'));
+        await tester.pumpAndSettle();
+      } else {
+        expect(find.text('LEVEL UP!'), findsNothing);
+      }
       expect(find.text('NEW BADGE!'), findsOneWidget);
       expect(find.text('${category.name} 박사'), findsOneWidget);
       await dismissDialogs(tester);
