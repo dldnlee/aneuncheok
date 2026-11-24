@@ -33,6 +33,22 @@ flutter run          # or: flutter run -d chrome
 flutter test
 ```
 
+## App name and icon
+
+The app is called 아는척 on Android, iOS and the web. The icon sources are
+`assets/icon/icon.png` (full icon) and `assets/icon/icon_foreground.png`
+(transparent, for Android's adaptive icon). To change the icon, replace those
+files and run:
+
+```sh
+dart run flutter_launcher_icons
+git checkout ios/Runner.xcodeproj/project.pbxproj   # the tool rewrites a build setting it should not
+```
+
+Still to do before a store release: replace the placeholder app id
+`com.example.aneuncheok` (Android `applicationId`/`namespace`, iOS bundle id) and
+add a real release signing config.
+
 ## Social features are in demo mode
 
 There is no backend yet. Friends and the global board come from
