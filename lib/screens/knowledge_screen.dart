@@ -7,23 +7,36 @@ import 'package:flutter/services.dart';
 import '../data/dummy_data.dart';
 import '../models/category.dart';
 import '../models/knowledge_item.dart';
+import '../social/social_store.dart';
 import '../state/progress_store.dart';
 import '../theme/app_theme.dart';
+import '../widgets/celebrations.dart';
+import '../widgets/common.dart';
 import '../widgets/effects.dart';
+import 'profile_screen.dart' show BadgeDialog;
 
 /// Full-screen vertical feed of knowledge cards.
 ///
 /// With a [category] every card uses that category's colors. Without one
 /// ("mixed" feed: shuffle, saved) each card uses its own category's colors.
 class KnowledgeScreen extends StatefulWidget {
-  KnowledgeScreen({super.key, required this.items, this.category, this.label})
-    : assert(items.isNotEmpty);
+  KnowledgeScreen({
+    super.key,
+    required this.items,
+    this.category,
+    this.label,
+    this.review = false,
+  }) : assert(items.isNotEmpty);
 
   final List<KnowledgeItem> items;
   final Category? category;
 
   /// Optional title shown in the top bar (e.g. "저장한 상식").
   final String? label;
+
+  /// Review mode: cards start with the answer hidden and are rated
+  /// "기억나요" / "헷갈려요" instead of "몰랐어요" / "알고 있었어요".
+  final bool review;
 
   bool get mixed => category == null;
 
@@ -43,10 +56,23 @@ class _Pop {
 
 class _KnowledgeScreenState extends State<KnowledgeScreen> {
   late final ProgressStore _store;
+  late final SocialStore _social;
   final _pageController = PageController();
   final _confetti = GlobalKey<ConfettiLayerState>();
 
   int _page = 0;
+
+  /// XP earned during this visit - shown on the finish screen.
+  int _sessionXp = 0;
+
+  /// Level-ups and badges wait here so dialogs show one at a time.
+  final List<Level> _pendingLevels = [];
+  bool _celebrating = false;
+
+  // Review mode: which answers were revealed, and how each card was rated.
+  final Set<String> _revealed = {};
+  final Map<String, bool> _reviewAnswers = {};
+  final Map<String, String> _reviewNotes = {};
   String _toastText = '';
   bool _toastVisible = false;
   Timer? _toastTimer;
@@ -66,6 +92,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   void initState() {
     super.initState();
     _store = ProgressScope.read(context);
+    _social = SocialScope.read(context);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _onViewed(0);
     });
@@ -75,6 +102,8 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   void dispose() {
     _toastTimer?.cancel();
     _pageController.dispose();
+    // Let friends see what I just earned.
+    _social.publishMine();
     super.dispose();
   }
 
@@ -83,13 +112,24 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
   void _onViewed(int index) {
     if (index >= _items.length) return;
     final result = _store.recordView(_items[index].id);
+    _sessionXp += result.xpGained;
+
     if (result.goalReached) {
-      _showToast('🎯 오늘 목표 달성! 대단해요');
+      _showToast('🎯 오늘 목표 달성! +${XpRewards.dailyGoal} XP');
       _confetti.currentState?.burst(strength: 1.6);
       HapticFeedback.heavyImpact();
     } else if (result.streakIncreased) {
-      _showToast('🔥 ${_store.currentStreak}일 연속! 멋져요');
+      final bonus = XpRewards.streakBonus(_store.currentStreak);
+      _showToast(
+        bonus > 0
+            ? '🔥 ${_store.currentStreak}일 연속! +$bonus XP'
+            : '🔥 ${_store.currentStreak}일 연속! 멋져요',
+      );
     }
+
+    final level = result.leveledUpTo;
+    if (level != null) _pendingLevels.add(level);
+    _celebrate();
   }
 
   void _onPageChanged(int index) {
@@ -100,34 +140,118 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
 
   void _react(KnowledgeItem item, {required bool newToMe}) {
     final result = _store.complete(item.id, newToMe: newToMe);
+    _sessionXp += result.xpGained;
     HapticFeedback.mediumImpact();
+
     if (result.firstTime) {
       _confetti.currentState?.burst();
       _addPop(
         _PopKind.reward,
-        newToMe ? '+1  새로 알았다! 🌟' : '+1  역시 알고 있었네! 😎',
+        newToMe
+            ? '+${result.xpGained} XP  새로 알았다! 🌟'
+            : '+${result.xpGained} XP  역시 알고 있었네! 😎',
       );
     }
+
+    final mastered = result.masteredCategoryId;
+    if (mastered != null) {
+      final category = categories.firstWhere((c) => c.id == mastered);
+      _showToast('🏆 ${category.name} 정복! +${XpRewards.categoryMastery} XP');
+      _confetti.currentState?.burst(strength: 1.8);
+      HapticFeedback.heavyImpact();
+    }
+
     final level = result.leveledUpTo;
-    if (level != null) _showLevelUp(level);
+    if (level != null) _pendingLevels.add(level);
+    _celebrate();
   }
 
   void _toggleSave(KnowledgeItem item) {
     final saved = _store.toggleSaved(item.id);
     HapticFeedback.lightImpact();
     if (saved) _addPop(_PopKind.heart, '');
+    _celebrate();
   }
 
   void _doubleTapSave(KnowledgeItem item) {
     _store.save(item.id);
     HapticFeedback.lightImpact();
     _addPop(_PopKind.heart, '');
+    _celebrate();
   }
 
   Future<void> _share(KnowledgeItem item) async {
     await Clipboard.setData(ClipboardData(text: item.shareText));
     if (!mounted) return;
+    _store.recordShare();
     _showToast('📋 복사했어요! 친구한테 아는척 해보세요');
+    _celebrate();
+  }
+
+  void _reveal(KnowledgeItem item) {
+    HapticFeedback.selectionClick();
+    setState(() => _revealed.add(item.id));
+  }
+
+  void _review(KnowledgeItem item, {required bool remembered}) {
+    // One answer per card per session: the store also refuses a card that is
+    // no longer due, so XP cannot be farmed by tapping again.
+    if (_reviewAnswers.containsKey(item.id)) return;
+    final result = _store.review(item.id, remembered: remembered);
+    if (!result.applied) return;
+
+    _sessionXp += result.xpGained;
+    setState(() {
+      _reviewAnswers[item.id] = remembered;
+      _reviewNotes[item.id] = result.graduated
+          ? '🎓 졸업! 이 상식은 이제 완전히 내 것이에요'
+          : remembered
+          ? '${result.nextInDays}일 뒤에 다시 만나요'
+          : '내일 다시 만나요';
+    });
+
+    HapticFeedback.mediumImpact();
+    if (remembered) {
+      _confetti.currentState?.burst(strength: result.graduated ? 1.8 : 0.8);
+      _addPop(_PopKind.reward, '+${result.xpGained} XP  기억났다! 🧠');
+    } else {
+      _addPop(_PopKind.reward, '괜찮아요, 내일 또 만나요 💪');
+    }
+    if (result.graduated) _showToast('🎓 졸업! 복습을 모두 마쳤어요');
+
+    final level = result.leveledUpTo;
+    if (level != null) _pendingLevels.add(level);
+    _celebrate();
+  }
+
+  /// Shows pending level-ups and new badges one after another. Safe to call
+  /// repeatedly: if it is already running, it picks up anything new when the
+  /// current dialog closes.
+  Future<void> _celebrate() async {
+    if (_celebrating) return;
+    _celebrating = true;
+    try {
+      while (mounted) {
+        if (_pendingLevels.isNotEmpty) {
+          await _showLevelUp(_pendingLevels.removeAt(0));
+          continue;
+        }
+        final badges = _store.drainNewBadges();
+        if (badges.isEmpty) break;
+        for (final badge in badges) {
+          if (!mounted) return;
+          _confetti.currentState?.burst(strength: 1.4);
+          HapticFeedback.heavyImpact();
+          await showDialog<void>(
+            context: context,
+            builder: (_) =>
+                BadgeDialog(badge: badge, unlocked: true, celebrate: true),
+          );
+        }
+      }
+    } finally {
+      _celebrating = false;
+    }
   }
 
   void _showToast(String text) {
@@ -150,79 +274,9 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
     setState(() => _pops.removeWhere((p) => p.id == id));
   }
 
-  void _showLevelUp(Level level) {
-    final number = levels.indexOf(level) + 1;
-    showDialog<void>(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        child: PopIn(
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(28, 28, 28, 24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(32),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'LEVEL UP!',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 3,
-                    color: AppColors.purple,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(level.emoji, style: const TextStyle(fontSize: 84)),
-                const SizedBox(height: 8),
-                Text(
-                  level.name,
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.ink,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Lv.$number 달성! 🎉',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.inkSoft,
-                  ),
-                ),
-                const SizedBox(height: 22),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.purple,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                    ),
-                    child: const Text(
-                      '계속하기',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  Future<void> _showLevelUp(Level level) {
+    _confetti.currentState?.burst(strength: 1.6);
+    return showLevelUpDialog(context, level);
   }
 
   // ---- build ----------------------------------------------------------
@@ -248,6 +302,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   return _FinishCard(
                     store: _store,
                     ids: _items.map((i) => i.id).toList(),
+                    sessionXp: _sessionXp,
+                    review: widget.review,
+                    remembered: _reviewAnswers.values.where((v) => v).length,
+                    again: _reviewAnswers.values.where((v) => !v).length,
                     onRestart: () => _pageController.animateToPage(
                       0,
                       duration: const Duration(milliseconds: 500),
@@ -263,6 +321,13 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   store: _store,
                   showCategory: widget.mixed,
                   onReact: (newToMe) => _react(item, newToMe: newToMe),
+                  review: widget.review,
+                  revealed: _revealed.contains(item.id),
+                  reviewAnswer: _reviewAnswers[item.id],
+                  reviewNote: _reviewNotes[item.id],
+                  onReveal: () => _reveal(item),
+                  onReview: (remembered) =>
+                      _review(item, remembered: remembered),
                   onToggleSave: () => _toggleSave(item),
                   onDoubleTapSave: () => _doubleTapSave(item),
                   onShare: () => _share(item),
@@ -544,6 +609,12 @@ class _KnowledgeCard extends StatelessWidget {
     required this.onToggleSave,
     required this.onDoubleTapSave,
     required this.onShare,
+    this.review = false,
+    this.revealed = false,
+    this.reviewAnswer,
+    this.reviewNote,
+    this.onReveal,
+    this.onReview,
   });
 
   final KnowledgeItem item;
@@ -551,6 +622,15 @@ class _KnowledgeCard extends StatelessWidget {
   final ProgressStore store;
   final bool showCategory;
   final ValueChanged<bool> onReact;
+
+  /// Review mode: hide the answer until revealed, then rate how well it was
+  /// remembered. [reviewAnswer] is the rating given this session (if any).
+  final bool review;
+  final bool revealed;
+  final bool? reviewAnswer;
+  final String? reviewNote;
+  final VoidCallback? onReveal;
+  final ValueChanged<bool>? onReview;
   final VoidCallback onToggleSave;
   final VoidCallback onDoubleTapSave;
   final VoidCallback onShare;
@@ -581,20 +661,13 @@ class _KnowledgeCard extends StatelessWidget {
             child: Bubble(size: 250, opacity: 0.07),
           ),
           SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) => SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                  child: IntrinsicHeight(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 72, 24, 18),
-                      child: ListenableBuilder(
-                        listenable: store,
-                        builder: (context, _) => _buildContent(emoji),
-                      ),
-                    ),
-                  ),
-                ),
+            child: ListenableBuilder(
+              listenable: store,
+              builder: (context, _) => _buildContent(
+                emoji,
+                // Short screens get a smaller sticker and tighter text so a
+                // typical card fits without scrolling.
+                compact: MediaQuery.sizeOf(context).height < 700,
               ),
             ),
           ),
@@ -603,11 +676,22 @@ class _KnowledgeCard extends StatelessWidget {
     );
   }
 
-  Widget _buildContent(String emoji) {
+  Widget _buildContent(String emoji, {required bool compact}) {
     final reaction = store.reactionFor(item.id);
     final saved = store.isSaved(item.id);
+    final step = store.reviewStep(item.id);
+    final stepLabel = !review
+        ? null
+        : store.isGraduated(item.id)
+        ? '🎓 졸업!'
+        : step == null
+        ? null
+        : '🧠 복습 $step/${ProgressStore.reviewSteps}단계';
+    final hideAnswer = review && !revealed;
 
-    return Column(
+    // The reading area scrolls if it has to; the buttons below it never do,
+    // so they stay reachable on small phones.
+    final body = Column(
       children: [
         const Spacer(),
         // Double-tap-to-save lives on the reading area only. Wrapping the
@@ -619,26 +703,18 @@ class _KnowledgeCard extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _Sticker(emoji: emoji),
-              const SizedBox(height: 20),
-              if (showCategory) ...[
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${category.emoji} ${category.name}',
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                    ),
-                  ),
+              _Sticker(emoji: emoji, size: compact ? 84 : 118),
+              SizedBox(height: compact ? 12 : 20),
+              if (showCategory || stepLabel != null) ...[
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    if (showCategory)
+                      _Pill('${category.emoji} ${category.name}'),
+                    if (stepLabel != null) _Pill(stepLabel),
+                  ],
                 ),
                 const SizedBox(height: 12),
               ],
@@ -646,13 +722,13 @@ class _KnowledgeCard extends StatelessWidget {
                 child: Text(
                   item.title,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 32,
+                  style: TextStyle(
+                    fontSize: compact ? 28 : 32,
                     height: 1.2,
                     fontWeight: FontWeight.w900,
                     letterSpacing: -0.5,
                     color: Colors.white,
-                    shadows: [
+                    shadows: const [
                       Shadow(
                         color: Color(0x33000000),
                         blurRadius: 10,
@@ -662,106 +738,270 @@ class _KnowledgeCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
-              FadeSlideIn(
-                delay: const Duration(milliseconds: 120),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.22),
-                    borderRadius: BorderRadius.circular(26),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.14),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        item.content,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          height: 1.6,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
+              if (!hideAnswer) ...[
+                const SizedBox(height: 18),
+                FadeSlideIn(
+                  delay: const Duration(milliseconds: 120),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(26),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.14),
                       ),
-                      if (item.source != null) ...[
-                        const SizedBox(height: 12),
+                    ),
+                    child: Column(
+                      children: [
                         Text(
-                          '출처: ${item.source}',
+                          item.content,
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: compact ? 16.5 : 18,
+                            height: compact ? 1.5 : 1.6,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
                           ),
                         ),
+                        if (item.source != null) ...[
+                          const SizedBox(height: 12),
+                          Text(
+                            '출처: ${item.source}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.white.withValues(alpha: 0.75),
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        // The recall card is tappable, so it must sit outside the double-tap
+        // area above: otherwise Flutter would wait ~300 ms before letting the
+        // tap through.
+        if (hideAnswer) ...[
+          const SizedBox(height: 18),
+          FadeSlideIn(
+            delay: const Duration(milliseconds: 120),
+            child: _RecallCard(onTap: onReveal),
+          ),
+        ],
+        const SizedBox(height: 14),
+        if (!hideAnswer)
+          FadeSlideIn(
+            delay: const Duration(milliseconds: 200),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _MiniAction(
+                  icon: saved
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  label: saved ? '저장됨' : '저장',
+                  active: saved,
+                  onTap: onToggleSave,
+                ),
+                const SizedBox(width: 10),
+                _MiniAction(
+                  icon: Icons.ios_share_rounded,
+                  label: '복사',
+                  onTap: onShare,
+                ),
+              ],
+            ),
+          ),
+        const Spacer(),
+      ],
+    );
+
+    final bottom = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (review) ...[
+          if (hideAnswer)
+            _ReactionButton(
+              label: '👀 내용 확인하기',
+              accent: category.colorDark,
+              selected: true,
+              dimmed: false,
+              onTap: onReveal ?? () {},
+            )
+          else
+            Row(
+              children: [
+                Expanded(
+                  child: _ReactionButton(
+                    label: '😵 헷갈려요',
+                    accent: category.colorDark,
+                    selected: reviewAnswer == false,
+                    dimmed: reviewAnswer == true,
+                    onTap: () => onReview?.call(false),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _ReactionButton(
+                    label: '✅ 기억나요!',
+                    accent: category.colorDark,
+                    selected: reviewAnswer == true,
+                    dimmed: reviewAnswer == false,
+                    onTap: () => onReview?.call(true),
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 12),
+          _SwipeHint(
+            done: reviewAnswer != null,
+            note: reviewNote,
+            height: 72,
+            idleText: hideAnswer
+                ? '먼저 떠올려 본 뒤에 눌러 보세요 🤔'
+                : '얼마나 기억나는지 골라 주세요 👆',
+          ),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(
+                child: _ReactionButton(
+                  label: '🤯 몰랐어요!',
+                  accent: category.colorDark,
+                  selected: reaction == true,
+                  dimmed: reaction == false,
+                  onTap: () => onReact(true),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _ReactionButton(
+                  label: '😎 알고 있었어요',
+                  accent: category.colorDark,
+                  selected: reaction == false,
+                  dimmed: reaction == true,
+                  onTap: () => onReact(false),
                 ),
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 14),
-        FadeSlideIn(
-          delay: const Duration(milliseconds: 200),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _MiniAction(
-                icon: saved
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                label: saved ? '저장됨' : '저장',
-                active: saved,
-                onTap: onToggleSave,
+          const SizedBox(height: 12),
+          _SwipeHint(done: reaction != null),
+        ],
+      ],
+    );
+
+    return Column(
+      children: [
+        Expanded(
+          // The padding lives inside the scroll view so the floating sticker
+          // is never clipped at the viewport edge.
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 72, 24, 8),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: math.max(0, constraints.maxHeight - 80),
+                ),
+                child: IntrinsicHeight(child: body),
               ),
-              const SizedBox(width: 10),
-              _MiniAction(
-                icon: Icons.ios_share_rounded,
-                label: '복사',
-                onTap: onShare,
-              ),
-            ],
+            ),
           ),
         ),
-        const Spacer(flex: 2),
-        Row(
-          children: [
-            Expanded(
-              child: _ReactionButton(
-                label: '🤯 몰랐어요!',
-                accent: category.colorDark,
-                selected: reaction == true,
-                dimmed: reaction == false,
-                onTap: () => onReact(true),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _ReactionButton(
-                label: '😎 알고 있었어요',
-                accent: category.colorDark,
-                selected: reaction == false,
-                dimmed: reaction == true,
-                onTap: () => onReact(false),
-              ),
-            ),
-          ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
+          child: bottom,
         ),
-        const SizedBox(height: 12),
-        _SwipeHint(done: reaction != null),
       ],
     );
   }
 }
 
+/// Small translucent label ("생활", "복습 2/5단계").
+class _Pill extends StatelessWidget {
+  const _Pill(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w900,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+/// Stands in for the answer in review mode until the player taps it.
+class _RecallCard extends StatelessWidget {
+  const _RecallCard({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      onTap: onTap,
+      pressedScale: 0.98,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.22),
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.4),
+            width: 2,
+          ),
+        ),
+        child: Column(
+          children: [
+            const Text('🤔', style: TextStyle(fontSize: 34, height: 1)),
+            const SizedBox(height: 10),
+            const Text(
+              '이 상식, 기억나요?',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '떠올려 본 뒤 눌러서 확인해요',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.8),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Sticker extends StatelessWidget {
-  const _Sticker({required this.emoji});
+  const _Sticker({required this.emoji, this.size = 118});
 
   final String emoji;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -771,8 +1011,8 @@ class _Sticker extends StatelessWidget {
         builder: (context, t) => Transform.translate(
           offset: Offset(0, -7 * t),
           child: Container(
-            width: 118,
-            height: 118,
+            width: size,
+            height: size,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
@@ -789,7 +1029,10 @@ class _Sticker extends StatelessWidget {
                 ),
               ],
             ),
-            child: Text(emoji, style: const TextStyle(fontSize: 62, height: 1)),
+            child: Text(
+              emoji,
+              style: TextStyle(fontSize: size * 0.525, height: 1),
+            ),
           ),
         ),
       ),
@@ -894,15 +1137,37 @@ class _ReactionButton extends StatelessWidget {
 }
 
 class _SwipeHint extends StatelessWidget {
-  const _SwipeHint({required this.done});
+  const _SwipeHint({
+    required this.done,
+    this.note,
+    this.idleText = '어땠나요? 반응을 남겨보세요 👆',
+    this.height = 50,
+  });
 
   final bool done;
 
+  /// Fixed height, so the card does not jump when the hint changes from one
+  /// line to several (which would squeeze the reading area on small phones).
+  final double height;
+
+  /// Extra line shown above the swipe hint once answered (review mode).
+  final String? note;
+
+  /// Shown until the card has been answered.
+  final String idleText;
+
   @override
   Widget build(BuildContext context) {
+    return SizedBox(
+      height: height,
+      child: Align(alignment: Alignment.topCenter, child: _content()),
+    );
+  }
+
+  Widget _content() {
     if (!done) {
       return Text(
-        '어땠나요? 반응을 남겨보세요 👆',
+        idleText,
         style: TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w700,
@@ -914,14 +1179,24 @@ class _SwipeHint extends StatelessWidget {
       duration: const Duration(milliseconds: 800),
       builder: (context, t) => Transform.translate(
         offset: Offset(0, -6 * t),
-        child: const Column(
+        child: Column(
           children: [
-            Icon(
+            const Icon(
               Icons.keyboard_arrow_up_rounded,
               color: Colors.white,
               size: 30,
             ),
-            Text(
+            if (note != null)
+              Text(
+                note!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.star,
+                ),
+              ),
+            const Text(
               '위로 스와이프해서 다음 상식',
               style: TextStyle(
                 fontSize: 13,
@@ -940,12 +1215,24 @@ class _FinishCard extends StatelessWidget {
   const _FinishCard({
     required this.store,
     required this.ids,
+    required this.sessionXp,
     required this.onRestart,
     required this.onHome,
+    this.review = false,
+    this.remembered = 0,
+    this.again = 0,
   });
 
   final ProgressStore store;
   final List<String> ids;
+
+  /// Review mode: a different title and summary, and no "start over".
+  final bool review;
+  final int remembered;
+  final int again;
+
+  /// XP earned during this visit.
+  final int sessionXp;
   final VoidCallback onRestart;
   final VoidCallback onHome;
 
@@ -996,10 +1283,10 @@ class _FinishCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Text(
-                        '여기까지 다 봤어요!',
+                      Text(
+                        review ? '오늘 복습 끝!' : '여기까지 다 봤어요!',
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 30,
                           fontWeight: FontWeight.w900,
                           color: Colors.white,
@@ -1007,15 +1294,38 @@ class _FinishCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        '$done / ${ids.length}개를 알아봤어요',
+                        review
+                            ? '$remembered개 기억났어요${again > 0 ? ' · $again개는 내일 다시' : ''}'
+                            : '$done / ${ids.length}개를 알아봤어요',
                         style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
                           color: Colors.white.withValues(alpha: 0.9),
                         ),
                       ),
-                      if (streak > 0) ...[
+                      if (sessionXp > 0) ...[
                         const SizedBox(height: 14),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 9,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.star,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            '⭐ 이번에 +$sessionXp XP 얻었어요!',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (streak > 0) ...[
+                        const SizedBox(height: 10),
                         Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -1035,14 +1345,47 @@ class _FinishCard extends StatelessWidget {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 36),
-                      _FinishButton(
-                        label: '🔄 처음부터 다시',
-                        filled: true,
-                        onTap: onRestart,
+                      const SizedBox(height: 22),
+                      Text(
+                        '${store.level.emoji} Lv.${store.levelNumber}  ${store.level.name}',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
                       ),
-                      const SizedBox(height: 12),
-                      _FinishButton(label: '🏠 홈으로', onTap: onHome),
+                      const SizedBox(height: 8),
+                      ProgressBar(
+                        value: store.levelProgress,
+                        fill: AppColors.star,
+                        track: Colors.white.withValues(alpha: 0.25),
+                        height: 12,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        store.nextLevel == null
+                            ? '최고 레벨이에요! 👑'
+                            : '다음 레벨까지 ${store.nextLevel!.minXp - store.xp} XP',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white.withValues(alpha: 0.9),
+                        ),
+                      ),
+                      const SizedBox(height: 30),
+                      if (!review) ...[
+                        _FinishButton(
+                          label: '🔄 처음부터 다시',
+                          filled: true,
+                          onTap: onRestart,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      _FinishButton(
+                        label: '🏠 홈으로',
+                        filled: review,
+                        onTap: onHome,
+                      ),
                     ],
                   );
                 },
