@@ -45,9 +45,9 @@ dart run flutter_launcher_icons
 git checkout ios/Runner.xcodeproj/project.pbxproj   # the tool rewrites a build setting it should not
 ```
 
-Still to do before a store release: replace the placeholder app id
-`com.example.aneuncheok` (Android `applicationId`/`namespace`, iOS bundle id) and
-add a real release signing config.
+The app id is `com.eunwon.aneuncheok`. See [RELEASING.md](RELEASING.md) for signing,
+building the Android bundle and the Google Play checklist. Store images live in
+`assets/store/`.
 
 ## Social features are in demo mode
 

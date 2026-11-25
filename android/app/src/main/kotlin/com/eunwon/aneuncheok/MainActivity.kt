@@ -1,4 +1,4 @@
-package com.example.aneuncheok
+package com.eunwon.aneuncheok
 
 import io.flutter.embedding.android.FlutterActivity
 
